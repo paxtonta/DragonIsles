@@ -28,6 +28,12 @@ from dragonisles.web import (
 )
 
 
+def _ready_bot_session():
+    session = WebSession("bot")
+    session.action({"action": "first_turn", "choice": "me"})
+    return session
+
+
 def _web_request(server, method, path, body=None, cookie=None):
     connection = http.client.HTTPConnection(*server.server_address)
     headers = {}
@@ -93,7 +99,7 @@ def test_web_light_mode_colors_clear_contrast_floor_on_all_surfaces():
 
 
 def test_web_state_exposes_board_and_public_state():
-    session = WebSession()
+    session = _ready_bot_session()
     state = session.state()
 
     assert len(state["encounters"]) == 4
@@ -114,7 +120,7 @@ def test_web_state_exposes_board_and_public_state():
 
 def test_web_new_game_button_resets_the_session():
     assert "New game" in HTML
-    session = WebSession()
+    session = _ready_bot_session()
     old_game = session.game
     old_encounters = old_game.state.encounters
     session.revision = 7
@@ -161,7 +167,7 @@ def test_web_new_game_button_resets_the_session():
 
 
 def test_web_new_game_rebinds_interaction_callbacks_to_the_live_session():
-    session = WebSession()
+    session = _ready_bot_session()
     lock = session.lock
 
     session.new_game()
@@ -183,8 +189,9 @@ def test_web_new_game_rebinds_interaction_callbacks_to_the_live_session():
 
 
 def test_web_new_game_skill_choice_uses_the_live_session_callback():
-    session = WebSession()
+    session = _ready_bot_session()
     session.new_game()
+    session.action({"action": "first_turn", "choice": "me"})
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Monk"]
@@ -207,7 +214,7 @@ def test_web_new_game_skill_choice_uses_the_live_session_callback():
 
 
 def test_web_game_over_uses_highest_vp_player_as_winner():
-    session = WebSession()
+    session = _ready_bot_session()
     human, bot = session.game.state.players
     human.encounters[:] = [Encounter(f"Done {index}", 1, 1, 1, 1) for index in range(8)]
     bot.encounters[:] = [Encounter(f"High {index}", 5, 1, 1, 1) for index in range(8)]
@@ -224,7 +231,7 @@ def test_web_game_over_uses_highest_vp_player_as_winner():
 
 
 def test_web_game_over_uses_coin_percentage_to_break_vp_ties():
-    session = WebSession()
+    session = _ready_bot_session()
     human, bot = session.game.state.players
     human.character = CHARACTERS["Warrior"]
     bot.character = CHARACTERS["Warrior"]
@@ -276,11 +283,11 @@ def test_live_encounter_markup_has_balanced_pick_attribute():
 def test_game_ui_shows_die_faces_without_a_reference_tab():
     assert "onclick=\"location.href='/reference'\"" not in HTML
     assert "Die faces: ${S.die_faces.join(', ')}" in HTML
-    assert "die_faces" in WebSession().state()
+    assert "die_faces" in _ready_bot_session().state()
 
 
 def test_tavern_cards_are_public_and_not_repeated_in_the_trader_panel():
-    state = WebSession().state()
+    state = _ready_bot_session().state()
 
     assert len(state["market"]) == 2
     assert "let market=S.market.map(cardHtml).join(', ');" in HTML
@@ -293,7 +300,7 @@ def test_tavern_cards_are_public_and_not_repeated_in_the_trader_panel():
 
 
 def test_web_public_state_hides_other_players_potion_types():
-    session = WebSession()
+    session = _ready_bot_session()
     session.human.potions.append(PotionToken(PLUS_TWO))
     bot = session.game.state.players[1]
     bot.potions.append(PotionToken(PLUS_TWO))
@@ -305,7 +312,7 @@ def test_web_public_state_hides_other_players_potion_types():
 
 
 def test_web_public_state_shows_discard_pile_top_card():
-    session = WebSession()
+    session = _ready_bot_session()
     first = Card("red", 2)
     second = Card("blue", 6)
     session.game.state.deck.discard(first)
@@ -324,7 +331,7 @@ def test_web_public_state_shows_discard_pile_top_card():
 
 
 def test_web_state_shows_only_active_challenge_cards():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     encounter = session.game.state.encounters[0]
@@ -350,7 +357,7 @@ def test_web_state_shows_only_active_challenge_cards():
 
 
 def test_web_active_challenge_cards_are_not_persisted_after_turn():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     encounter = session.game.state.encounters[0]
@@ -411,7 +418,7 @@ def test_web_ladders_show_cumulative_bonuses():
 
 
 def test_web_options_uses_engine_legality_and_blocking():
-    session = WebSession()
+    session = _ready_bot_session()
     encounter = session.state()["encounters"][0]
     options = session.options({"encounter": encounter["id"], "cards": []})
 
@@ -429,7 +436,7 @@ def _force_human_turn(session):
 
 
 def test_web_prepare_stages_discard_between_human_draws():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     session.pending_challenge = None
     human = session.human
@@ -467,7 +474,7 @@ def test_web_prepare_stages_discard_between_human_draws():
 
 
 def test_web_bot_prepare_stages_one_discard_per_draw():
-    session = WebSession()
+    session = _ready_bot_session()
     bot = session.game.state.players[1]
     initial_prepares = bot.prepares
     session.pending_challenge = None
@@ -505,7 +512,7 @@ def test_web_bot_prepare_stages_one_discard_per_draw():
 
 def test_web_challenge_pauses_for_rerolls_plus_two_and_skill_choice():
     """The browser must decide rerolls and the +2 after seeing the dice."""
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Sorcerer"]
@@ -542,7 +549,7 @@ def test_web_challenge_pauses_for_rerolls_plus_two_and_skill_choice():
 
 
 def test_web_prepare_offers_each_draw_source_in_turn():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     before = len(session.human.hand)
 
@@ -558,7 +565,7 @@ def test_web_prepare_offers_each_draw_source_in_turn():
 
 def test_prepare_can_be_cancelled_until_the_first_card_is_drawn():
     """A misclicked Prepare must be recoverable while nothing has happened."""
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     before = len(session.human.hand)
 
@@ -578,7 +585,7 @@ def test_prepare_can_be_cancelled_until_the_first_card_is_drawn():
 
 def test_trader_treasure_stages_its_keep_choice_in_the_browser():
     """The Trader's keep-1-of-3 draw must be a browser choice, not an error."""
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Trader"]
@@ -602,7 +609,7 @@ def test_trader_treasure_stages_its_keep_choice_in_the_browser():
 
 
 def test_browser_lets_human_choose_hand_limit_discards():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.hand.extend(
@@ -636,7 +643,7 @@ def test_browser_lets_human_choose_hand_limit_discards():
 
 
 def test_free_potion_discard_does_not_end_human_turn():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.potions.append(PotionToken(DRAW_TWO))
@@ -653,7 +660,7 @@ def test_free_potion_discard_does_not_end_human_turn():
 
 
 def test_browser_stages_bot_hand_limit_discards_one_at_a_time():
-    session = WebSession()
+    session = _ready_bot_session()
     bot = session.game.state.players[1]
     session.game.state.current_player = 1
     bot.hand.extend(
@@ -683,7 +690,7 @@ def test_browser_stages_bot_hand_limit_discards_one_at_a_time():
 
 def test_a_failed_skill_reward_cannot_be_applied_twice():
     """A challenge must not stay clickable after its skill choice was taken."""
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Trader"]
@@ -712,7 +719,7 @@ def test_a_failed_skill_reward_cannot_be_applied_twice():
 
 
 def test_web_skill_choice_does_not_fall_back_to_sneak():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Monk"]
@@ -742,7 +749,7 @@ def test_web_skill_choice_does_not_fall_back_to_sneak():
 
 
 def test_stale_human_skill_choice_cannot_interfere_with_bot_challenge():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     bot = session.game.state.players[1]
@@ -761,7 +768,7 @@ def test_stale_human_skill_choice_cannot_interfere_with_bot_challenge():
 
 
 def test_stale_bot_continuation_cannot_advance_the_turn():
-    session = WebSession()
+    session = _ready_bot_session()
     bot = session.game.state.players[1]
     session.game.state.current_player = 1
     encounter = Encounter("Bot challenge", 1, 1, 1, 1, encounter_type="type0")
@@ -778,7 +785,7 @@ def test_stale_bot_continuation_cannot_advance_the_turn():
 
 
 def test_failed_skill_upgrade_keeps_the_choice_and_human_turn(monkeypatch):
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Trader"]
@@ -808,7 +815,7 @@ def test_failed_skill_upgrade_keeps_the_choice_and_human_turn(monkeypatch):
 
 
 def test_stale_skill_request_is_expired_but_displayed_track_remains_retryable():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Trader"]
@@ -838,7 +845,7 @@ def test_every_displayed_skill_track_accepts_each_unmaxed_level():
     for character_name, track_steps in SKILL_TRACKS.items():
         for track, steps in track_steps.items():
             for level in range(len(steps)):
-                session = WebSession()
+                session = _ready_bot_session()
                 _force_human_turn(session)
                 human = session.human
                 human.character = CHARACTERS[character_name]
@@ -869,7 +876,7 @@ def test_every_displayed_skill_track_accepts_each_unmaxed_level():
 
 
 def test_web_skill_choices_do_not_reuse_the_previous_track():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Monk"]
@@ -898,7 +905,7 @@ def test_web_skill_choices_do_not_reuse_the_previous_track():
 
 
 def test_web_monk_can_choose_sneak_for_consecutive_skill_upgrades():
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Monk"]
@@ -951,7 +958,7 @@ def test_web_logs_clicks_and_action_results_to_the_console():
 
 def test_web_eighth_encounter_skips_skill_prompt_and_ends_game():
     """Resolving the 8th Encounter must not pause for skill selection."""
-    session = WebSession()
+    session = _ready_bot_session()
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Warrior"]
@@ -982,7 +989,7 @@ def test_web_eighth_encounter_skips_skill_prompt_and_ends_game():
 
 
 def test_web_state_reports_token_supplies_and_conserves_them():
-    session = WebSession()
+    session = _ready_bot_session()
     tokens = session.state()["tokens"]
     held = sum(len(player.potions) for player in session.game.state.players)
 
@@ -1189,12 +1196,58 @@ def test_versus_childhood_boat_answer_requests_years_and_can_be_replaced():
     }
 
 
-def test_bot_mode_starts_without_a_boat_question():
+def test_bot_mode_requires_a_first_turn_choice_before_play():
     session = WebSession("bot")
+    initial_turn = session.game.state.turn_number
+    initial_player = session.game.state.current_player
+    bot = session.game.state.players[1]
 
     assert "boat" not in session.state()
-    with pytest.raises(ValueError, match="unavailable in bot mode"):
-        session.action({"action": "boat_answer", "text": "today"})
+    assert session.state()["first_turn"] == {"pending": True}
+    assert session.state()["first_turn_result"] is None
+    assert session.game.state.current_player == initial_player
+    assert bot.encounters == []
+    for action in ("attempt", "prepare_start"):
+        with pytest.raises(ValueError, match="choose who goes first first"):
+            session.action({"action": action})
+    with pytest.raises(ValueError, match="invalid first-turn choice"):
+        session.action({"action": "first_turn", "choice": "random"})
+
+    session.action({"action": "first_turn", "choice": "me"})
+    assert session.game.state.current_player == 0
+    assert session.state()["first_turn"] is None
+    assert session.state()["first_turn_result"] == "You chose to go first."
+
+    session.action({"action": "new_game"})
+    assert session.state()["first_turn"] == {"pending": True}
+    assert session.game.state.turn_number == initial_turn
+
+
+def test_bot_first_turn_choice_can_give_the_bot_the_opening_turn():
+    session = WebSession("bot")
+    bot = session.game.state.players[1]
+
+    session.action({"action": "first_turn", "choice": "bot"})
+
+    assert session.game.state.current_player == 1
+    assert session.state()["first_turn_result"] == (
+        "You gave the Bot the first turn."
+    )
+    assert (
+        session.pending_challenge is not None
+        or session.pending_bot_prepare is not None
+        or bot.prepares > 0
+        or bot.encounters
+    )
+
+
+def test_bot_first_turn_panel_has_only_two_choices_and_versus_keeps_boat_panel():
+    assert "choice:'me'})" in HTML
+    assert "choice:'bot'})" in HTML
+    assert "choice:'random'})" not in HTML
+    versus = WebSession("versus")
+    assert "first_turn" not in versus.state()
+    assert versus.state()["boat"] is not None
 
 
 def test_passphrase_assigns_two_seats_and_rejects_a_third():

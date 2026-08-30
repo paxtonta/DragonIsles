@@ -21,6 +21,7 @@ def save(
     auth: dict[str, int],
     names: dict[int, str] | None = None,
     boat: dict[str, Any] | None = None,
+    first_turn: dict[str, Any] | None = None,
 ) -> None:
     """Atomically save a game and its authentication seats."""
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -37,6 +38,8 @@ def save(
             if boat is not None
             else {"answers": {}, "result": None, "decided": True},
         }
+        if first_turn is not None:
+            payload["first_turn"] = first_turn
         with temporary.open("wb") as stream:
             pickle.dump(payload, stream, protocol=5)
         os.chmod(temporary, 0o600)
@@ -62,6 +65,9 @@ def load(
         names = payload.get("names", {})
         boat = payload.get(
             "boat", {"answers": {}, "result": None, "decided": True}
+        )
+        first_turn = payload.get(
+            "first_turn", {"result": None, "decided": True}
         )
         if mode not in {"bot", "versus"} or not isinstance(game, Game):
             raise ValueError("invalid state fields")
@@ -99,16 +105,31 @@ def load(
             )
         ):
             raise ValueError("invalid boat state")
+        if (
+            not isinstance(first_turn, dict)
+            or not isinstance(first_turn.get("decided"), bool)
+            or not (
+                first_turn.get("result") is None
+                or isinstance(first_turn.get("result"), str)
+            )
+        ):
+            raise ValueError("invalid first-turn state")
+        normalized_boat = {
+            "answers": dict(boat["answers"]),
+            "result": boat["result"],
+            "decided": boat["decided"],
+        }
+        if mode == "bot":
+            normalized_boat["first_turn"] = {
+                "result": first_turn["result"],
+                "decided": first_turn["decided"],
+            }
         return (
             mode,
             game,
             dict(auth),
             dict(names),
-            {
-                "answers": dict(boat["answers"]),
-                "result": boat["result"],
-                "decided": boat["decided"],
-            },
+            normalized_boat,
         )
     except Exception:
         print("DragonIsles state load failed; starting a new game.", file=sys.stderr)

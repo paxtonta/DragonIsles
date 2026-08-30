@@ -49,9 +49,25 @@ class WebSession:
         self.state_path = state_path
         self.seat_names: dict[int, str] = {}
         self.boat_answers: dict[int, BoatAnswer] = {}
-        self.boat_result: str | None = None
-        self.boat_decided = mode != "versus"
+        self._first_turn_result: str | None = None
+        self.first_turn_decided = False
         self._reset()
+
+    @property
+    def boat_result(self) -> str | None:
+        return self._first_turn_result if self.mode == "versus" else None
+
+    @boat_result.setter
+    def boat_result(self, value: str | None) -> None:
+        self._first_turn_result = value
+
+    @property
+    def boat_decided(self) -> bool:
+        return self.first_turn_decided
+
+    @boat_decided.setter
+    def boat_decided(self, value: bool) -> None:
+        self.first_turn_decided = value
 
     def _interaction(self) -> GameInteraction:
         return GameInteraction(
@@ -84,8 +100,8 @@ class WebSession:
             self.game = Game(encounters, interaction=interaction)
         self._apply_seat_names()
         self.boat_answers = {}
-        self.boat_result = None
-        self.boat_decided = self.mode != "versus"
+        self._first_turn_result = None
+        self.first_turn_decided = False
         self.pending: dict[str, Any] = {}
         self.pending_challenge: ChallengeProgress | None = None
         self.pending_skill_tracks: tuple[str, ...] | None = None
@@ -128,8 +144,15 @@ class WebSession:
                     answer := parse_boat_answer(raw, date.today())
                 ).tier > 0
             }
-            self.boat_result = boat["result"]
-            self.boat_decided = boat["decided"]
+            if self.mode == "versus":
+                self._first_turn_result = boat["result"]
+                self.first_turn_decided = boat["decided"]
+            else:
+                first_turn = boat.get(
+                    "first_turn", {"result": None, "decided": True}
+                )
+                self._first_turn_result = first_turn["result"]
+                self.first_turn_decided = first_turn["decided"]
             self._apply_seat_names()
             self.pending = {}
             self.pending_challenge = None
@@ -158,9 +181,17 @@ class WebSession:
             "answers": {
                 seat: answer.raw for seat, answer in self.boat_answers.items()
             },
-            "result": self.boat_result,
-            "decided": self.boat_decided,
+            "result": self.boat_result if self.mode == "versus" else None,
+            "decided": self.boat_decided if self.mode == "versus" else True,
         }
+        first_turn = (
+            None
+            if self.mode == "versus"
+            else {
+                "result": self._first_turn_result,
+                "decided": self.first_turn_decided,
+            }
+        )
         save_state(
             self.state_path,
             self.mode,
@@ -168,6 +199,7 @@ class WebSession:
             AUTH_SESSIONS,
             self.seat_names,
             boat,
+            first_turn,
         )
 
     def _apply_seat_names(self) -> None:
@@ -244,6 +276,8 @@ class WebSession:
         self.pending_bot_prepare = None
 
     def _run_bots(self) -> None:
+        if not self.first_turn_decided:
+            return
         while (
             not self.game.state.game_over
             and self.game.state.players[self.game.state.current_player].is_bot
@@ -304,9 +338,34 @@ class WebSession:
             if action == "new_game":
                 self.new_game()
                 return
-            if self.mode == "versus" and not self.boat_decided:
-                if action != "boat_answer":
-                    raise ValueError("answer the boat question first")
+            if not self.first_turn_decided:
+                allowed = "boat_answer" if self.mode == "versus" else "first_turn"
+                if action != allowed:
+                    message = (
+                        "answer the boat question first"
+                        if self.mode == "versus"
+                        else "choose who goes first first"
+                    )
+                    raise ValueError(message)
+            if action == "first_turn":
+                if self.mode != "bot":
+                    raise ValueError("first-turn choice is unavailable in versus mode")
+                choice = payload.get("choice")
+                if choice not in {"me", "bot"}:
+                    raise ValueError("invalid first-turn choice")
+                winner = 0 if choice == "me" else 1
+                self.game.state.current_player = winner
+                self._first_turn_result = (
+                    "You chose to go first."
+                    if choice == "me"
+                    else "You gave the Bot the first turn."
+                )
+                self.first_turn_decided = True
+                self.events.append(self._first_turn_result)
+                self.revision += 1
+                self._save()
+                self._run_bots()
+                return
             if action == "boat_answer":
                 if self.mode != "versus":
                     raise ValueError("boat question is unavailable in bot mode")
@@ -800,6 +859,13 @@ class WebSession:
                     }
                 )
                 state["boat_result"] = self.boat_result
+            else:
+                state["first_turn"] = (
+                    None
+                    if self.first_turn_decided
+                    else {"pending": True}
+                )
+                state["first_turn_result"] = self._first_turn_result
             return state
 
 
@@ -964,12 +1030,14 @@ function encounterHtml(){return S.encounters.map((c,i)=>`<div class="card encoun
 
 function cardHtml(c){return `<span class="adventure-card ${c.suit?'suit-'+c.suit:''}">${esc(c.label)}</span>`}
 function treasureHtml(t){return `<span class="treasure-card treasure-${esc(t.color)}" title="${esc(t.description)}">${esc(t.label)}</span>`}
-function handHtml(){let disabled=S.game_over||S.boat||(!S.human_turn&&S.mode==='versus')?'disabled':'';return S.hand.map(c=>`<label><input type=checkbox ${cards.includes(c.index)?'checked':''} ${disabled} value=${c.index} onchange="toggleCard(${c.index})"> ${cardHtml(c)}</label>`).join('')}
+function handHtml(){let disabled=S.game_over||S.boat||S.first_turn||(!S.human_turn&&S.mode==='versus')?'disabled':'';return S.hand.map(c=>`<label><input type=checkbox ${cards.includes(c.index)?'checked':''} ${disabled} value=${c.index} onchange="toggleCard(${c.index})"> ${cardHtml(c)}</label>`).join('')}
 
 function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
  if(S.boat.waiting)return `<div class=panel><b>When did you last travel by boat? The more recent answer takes the first turn.</b><br>Your answer: ${esc(S.boat.mine)}<br><span class=muted>Waiting for ${esc(S.opponent_name)}'s answer…</span></div>`;
  return `<div class=panel><b>When did you last travel by boat? The more recent answer takes the first turn.</b><br><input id=boat-answer type=text maxlength=60 value="${esc(S.boat.mine||'')}"><button onclick="submitBoat()">Submit</button></div>`}
 function submitBoat(){let input=document.getElementById('boat-answer');post('/api/action',{action:'boat_answer',text:input.value})}
+function firstTurnHtml(){if(S.mode!=='bot'||!S.first_turn)return '';
+ return `<div class=panel><button onclick="post('/api/action',{action:'first_turn',choice:'me'})">I go first</button><button onclick="post('/api/action',{action:'first_turn',choice:'bot'})">Bot goes first</button></div>`}
 
 function challengeHtml(){let c=S.challenge;if(S.game_over||!c)return '';
  let dice=c.rolls.map((r,i)=>`<span class="die ${rerollPicks.includes(i)?'picked':''}" onclick="toggleDie(${i})">${r}</span>`).join('');
@@ -1004,14 +1072,14 @@ function discardHtml(){let d=S.discard;if(S.game_over||!d)return '';
 
 function potionStatusHtml(){let me=S.players[S.seat];let kinds=me.potions.length?me.potions.join(', '):'none';
  return `<span class=muted>Potions: ${esc(kinds)}. +2 available: ${me.potions.includes('+2')?'yes':'no'}.</span>`}
-function potionHtml(){let me=S.players[S.seat];if(S.game_over||S.boat||!S.human_turn||!me.potions.length)return '';
+function potionHtml(){let me=S.players[S.seat];if(S.game_over||S.boat||S.first_turn||!S.human_turn||!me.potions.length)return '';
  let buttons=me.potions.map((k,i)=>k==='+2'?'':`<button onclick="post('/api/action',{action:'potion',potion:${i}})">Use ${esc(k)}</button>`).join('');
  return `<div class=panel><b>Potion effects</b> — +2 adds 2 during a Challenge; Draw 2 draws two cards; Purge draws 1 card and redeals the Encounter row.<br>${buttons}</div>`}
 
 function render(){
  let busy=S.challenge||S.prepare||S.treasure||S.trader||S.discard;
  let actionDisabled=S.game_over?' disabled':'';
- if(S.boat)actionDisabled=' disabled';
+ if(S.boat||S.first_turn)actionDisabled=' disabled';
  if(S.mode==='versus'&&!S.human_turn)actionDisabled=' disabled';
  if(selected&&!S.encounters.some(c=>c.id===selected)){selected=null;method=null}
  let methods=S.game_over?'Game over':selected?['sneak','steal','strike'].map(m=>`<button id="method-${m}"${actionDisabled} onclick="chooseMethod('${m}')" disabled>${m}</button>`).join(''):'Select an encounter first';
@@ -1020,7 +1088,8 @@ function render(){
  let market=S.market.map(cardHtml).join(', ');
  let tokens=S.tokens?`<div class=panel><b>Token supply</b><br>Potions left: ${S.tokens.potions} · Coins left: ${S.tokens.coins.map(c=>c[1]+'×'+c[0]).join(', ')}</div>`:'';
  document.getElementById('app').innerHTML=`<div class=grid><section>
- <div class=panel><b>Turn ${S.turn}</b> — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}<br><span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result?`<br><span class=muted>${esc(S.boat_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ <div class=panel><b>Turn ${S.turn}</b> — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}<br><span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ ${firstTurnHtml()}
  ${boatHtml()}
  ${S.mode==='versus'&&!S.human_turn?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
  ${gameOverHtml()}
@@ -1054,21 +1123,21 @@ function ladderHtml(){return Object.entries(S.ladders).map(([track,l])=>{
  let steps=l.steps.map((s,i)=>`<span class="step ${s.reached?'reached':''}">${i+1}. +${s.bonus}${s.reward?' &rarr; '+esc(s.reward):''}</span>`).join('');
  return `<div class=ladder><b>${esc(track)}</b> <span class=muted>level ${l.level}/${l.steps.length}</span><br>${steps}</div>`}).join('')}
 function completedText(p){return p.encounters.map(c=>c.name).join(', ')}
-function pick(id){if(S.boat||S.mode==='versus'&&!S.human_turn)return;selected=id;method=null;render()}
-function chooseMethod(m){if(S.boat||S.mode==='versus'&&!S.human_turn)return;method=m;refreshMethods()}
+function pick(id){if(S.boat||S.first_turn||S.mode==='versus'&&!S.human_turn)return;selected=id;method=null;render()}
+function chooseMethod(m){if(S.boat||S.first_turn||S.mode==='versus'&&!S.human_turn)return;method=m;refreshMethods()}
 function syncChallengeButton(enabled){let b=document.getElementById('challenge');if(b)b.disabled=!enabled||!!(S.challenge||S.prepare)||(!S.human_turn&&S.mode==='versus')}
-function toggleCard(i){if(S.boat)return;cards=cards.includes(i)?cards.filter(x=>x!==i):cards.concat([i]);refreshMethods()}
+function toggleCard(i){if(S.boat||S.first_turn)return;cards=cards.includes(i)?cards.filter(x=>x!==i):cards.concat([i]);refreshMethods()}
 function toggleDiscard(i){discardPicks=discardPicks.includes(i)?discardPicks.filter(x=>x!==i):discardPicks.concat([i]);render()}
 function toggleDie(i){let c=S.challenge;if(!c||c.phase!=='reroll')return;
  if(rerollPicks.includes(i))rerollPicks=rerollPicks.filter(x=>x!==i);
  else if(rerollPicks.length<c.reroll_limit)rerollPicks=rerollPicks.concat([i]);
  render()}
-async function refreshMethods(){if(S.boat||!selected||(!S.human_turn&&S.mode==='versus'))return;
+async function refreshMethods(){if(S.boat||S.first_turn||!selected||(!S.human_turn&&S.mode==='versus'))return;
  let o=await (await fetch('/api/options',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({encounter:selected,cards})})).json();
  for(let m of ['sneak','steal','strike']){let b=document.getElementById('method-'+m);if(b){b.disabled=!o[m].enabled;b.title=o[m].reason}}
  if(method&&!o[method].enabled)method=null;
  syncChallengeButton(!!method)}
-function attempt(){if(S.boat)return;rerollPicks=[];let payload={action:'attempt',encounter:selected,method,cards};cards=[];post('/api/action',payload)}
+function attempt(){if(S.boat||S.first_turn)return;rerollPicks=[];let payload={action:'attempt',encounter:selected,method,cards};cards=[];post('/api/action',payload)}
 setTheme(localStorage.getItem('dragonisles-theme')||'dark');get();
 setInterval(()=>{if(S&&S.mode==='versus'&&!S.human_turn)get()},2000);
 setInterval(()=>{if(S&&(!S.mode||S.mode==='bot'||S.human_turn)&&!S.challenge&&!S.prepare&&!S.discard&&!S.treasure&&!S.trader)get()},3000);

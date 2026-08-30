@@ -968,12 +968,22 @@ def test_web_preserves_boat_draft_across_refreshes():
 
 
 def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
-    assert "S.boat||S.first_turn?'':` —" in HTML
+    assert "S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` —" in HTML
     assert (
         "${S.mode==='versus'&&!S.boat&&!S.human_turn?`<div class=panel>Waiting for "
         in HTML
     )
     assert "Waiting for ${esc(S.opponent_name)}…" in HTML
+
+
+def test_web_hides_bot_panel_and_turn_line_while_first_turn_is_pending():
+    assert (
+        "S.players.filter(p=>!(S.mode==='bot'&&S.first_turn&&p.is_bot))"
+        in HTML
+    )
+    assert "S.first_turn?'':`<b>Turn ${S.turn}</b>" in HTML
+    assert "S.mode==='bot'&&!S.first_turn&&S.discard" in HTML
+    assert "S.mode==='bot'&&!S.first_turn&&S.challenge" in HTML
 
 
 def test_web_time_boat_prompt_uses_same_input_and_action():
@@ -1348,9 +1358,19 @@ def test_bot_mode_requires_a_first_turn_choice_before_play():
     assert session.state()["first_turn_result"] is None
     assert session.game.state.current_player == initial_player
     assert bot.encounters == []
+    session._run_bots()
+    assert bot.attempts == 0
+    assert bot.prepares == 0
+    assert bot.encounters == []
     for action in ("attempt", "prepare_start"):
         with pytest.raises(ValueError, match="choose who goes first first"):
             session.action({"action": action})
+    for action in ("continue_bot", "continue_bot_discard"):
+        with pytest.raises(ValueError, match="choose who goes first first"):
+            session.action({"action": action})
+    assert bot.attempts == 0
+    assert bot.prepares == 0
+    assert bot.encounters == []
     with pytest.raises(ValueError, match="invalid first-turn choice"):
         session.action({"action": "first_turn", "choice": "random"})
 

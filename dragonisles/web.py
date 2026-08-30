@@ -1195,12 +1195,12 @@ function render(){
  if(S.mode==='versus'&&!S.human_turn)actionDisabled=' disabled';
  if(selected&&!S.encounters.some(c=>c.id===selected)){selected=null;method=null}
  let methods=S.game_over?'Game over':selected?['sneak','steal','strike'].map(m=>`<button id="method-${m}"${actionDisabled} onclick="chooseMethod('${m}')" disabled>${m}</button>`).join(''):'Select an encounter first';
- let players=S.players.map(p=>{let potions=Array.isArray(p.potions)?esc(p.potions.join(', ')||'none'):p.potions;return `<div class=panel><b>${esc(p.name)} (${esc(p.character)})</b><br><span class=muted>${esc(p.ability)}</span>${p.score===undefined?'':`<br>Score: ${p.score} VP`}<br>Hand: ${p.hand_count} · Hand limit: ${p.hand_limit} · Coins: ${p.coins} · Potions: ${potions}<br>Skills: ${esc(JSON.stringify(p.skills))}<br>Completed: ${esc(completedText(p)||'none')}<br>Treasures: ${p.treasures.length?p.treasures.map(treasureHtml).join(', '):'none'}</div>`}).join('');
+ let players=S.players.filter(p=>!(S.mode==='bot'&&S.first_turn&&p.is_bot)).map(p=>{let potions=Array.isArray(p.potions)?esc(p.potions.join(', ')||'none'):p.potions;return `<div class=panel><b>${esc(p.name)} (${esc(p.character)})</b><br><span class=muted>${esc(p.ability)}</span>${p.score===undefined?'':`<br>Score: ${p.score} VP`}<br>Hand: ${p.hand_count} · Hand limit: ${p.hand_limit} · Coins: ${p.coins} · Potions: ${potions}<br>Skills: ${esc(JSON.stringify(p.skills))}<br>Completed: ${esc(completedText(p)||'none')}<br>Treasures: ${p.treasures.length?p.treasures.map(treasureHtml).join(', '):'none'}</div>`}).join('');
  let discardTop=S.discard_top?cardHtml(S.discard_top):'none';
  let market=S.market.map(cardHtml).join(', ');
  let tokens=S.tokens?`<div class=panel><b>Token supply</b><br>Potions left: ${S.tokens.potions} · Coins left: ${S.tokens.coins.map(c=>c[1]+'×'+c[0]).join(', ')}</div>`:'';
  document.getElementById('app').innerHTML=`<div class=grid><section>
- <div class=panel><b>Turn ${S.turn}</b>${S.boat||S.first_turn?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}`}<br><span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
  ${firstTurnHtml()}
  ${boatHtml()}
  ${S.mode==='versus'&&!S.boat&&!S.human_turn?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
@@ -1214,11 +1214,11 @@ function render(){
  <div class=panel><b>Events</b><pre class=events>${esc(S.events.join('\n'))}</pre></div>
  </section><aside><h2>Public state</h2>${players}<div class=panel><b>Tavern</b>: ${market}</div><div class=panel><b>Discard pile top</b>: ${discardTop}</div>${tokens}</aside></div>`;
  if(boatFocused){let input=document.getElementById('boat-answer');if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length)}}
- if(S.mode==='bot'&&S.discard&&S.discard.player_is_bot){
+ if(S.mode==='bot'&&!S.first_turn&&S.discard&&S.discard.player_is_bot){
   let revision=stateRevision,serverRevision=S.revision;
   clearTimeout(botTimer);
   botTimer=setTimeout(()=>{if(revision===stateRevision)post('/api/action',{action:'continue_bot_discard',revision:serverRevision})},2000);
- }else if(S.mode==='bot'&&S.challenge&&S.challenge.player_is_bot){
+ }else if(S.mode==='bot'&&!S.first_turn&&S.challenge&&S.challenge.player_is_bot){
   let revision=stateRevision,serverRevision=S.revision;
   clearTimeout(botTimer);
   botTimer=setTimeout(()=>{if(revision===stateRevision)post('/api/action',{action:'continue_bot',revision:serverRevision})},2000);

@@ -345,12 +345,15 @@ def test_pending_bot_first_turn_round_trips(tmp_path):
     loaded = load(path)
     assert loaded is not None
     assert loaded[4]["first_turn"] == {"result": None, "decided": False}
+    bot = loaded[1].state.players[1]
+    bot_snapshot = (bot.attempts, bot.prepares, list(bot.encounters))
 
     restored = WebSession("bot")
     restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
 
     assert restored.state()["first_turn"] == {"pending": True}
     assert restored.game.state.current_player == loaded[1].state.current_player
+    assert (bot.attempts, bot.prepares, bot.encounters) == bot_snapshot
 
 
 def test_legacy_bot_save_without_first_turn_loads_as_decided(tmp_path):

@@ -1188,7 +1188,7 @@ function potionStatusHtml(){let me=S.players[S.seat];let kinds=me.potions.length
  return `<span class=muted>Potions: ${esc(kinds)}. +2 available: ${me.potions.includes('+2')?'yes':'no'}.</span>`}
 function potionHtml(){let me=S.players[S.seat];if(S.game_over||S.boat||S.first_turn||!S.human_turn||!me.potions.length)return '';
  let buttons=me.potions.map((k,i)=>k==='+2'?'':`<button onclick="post('/api/action',{action:'potion',potion:${i}})">Use ${esc(k)}</button>`).join('');
- return `<div class=panel><b>Potion effects</b> — +2 adds 2 during a Challenge; Draw 2 draws two cards; Purge draws 1 card and redeals the Encounter row.<br>${buttons}</div>`}
+ return `<div class=panel><b>Potion effects</b><br><span class=muted>+2 — during a Challenge, adds 2 to your total; usable again if you hold more than one.<br>Draw 2 — draw two cards immediately.<br>Purge — draw one card, then discard the whole Encounter row and deal a new one.</span><br>${buttons}</div>`}
 
 function render(){
  let busy=S.challenge||S.prepare||S.treasure||S.trader||S.discard;

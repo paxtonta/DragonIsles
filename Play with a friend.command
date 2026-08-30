@@ -37,36 +37,50 @@ else
     else
         case "$(uname -s):$(uname -m)" in
             Darwin:arm64)
-                CLOUD_FLARED_ARCHIVE="cloudflared-darwin-arm64.tgz"
+                CLOUDFLARED_ASSET="cloudflared-darwin-arm64.tgz"
+                CLOUDFLARED_IS_ARCHIVE=1
                 ;;
             Darwin:x86_64)
-                CLOUD_FLARED_ARCHIVE="cloudflared-darwin-amd64.tgz"
+                CLOUDFLARED_ASSET="cloudflared-darwin-amd64.tgz"
+                CLOUDFLARED_IS_ARCHIVE=1
                 ;;
             Linux:x86_64)
-                CLOUD_FLARED_ARCHIVE="cloudflared-linux-amd64.tgz"
+                CLOUDFLARED_ASSET="cloudflared-linux-amd64"
+                CLOUDFLARED_IS_ARCHIVE=0
                 ;;
             Linux:aarch64|Linux:arm64)
-                CLOUD_FLARED_ARCHIVE="cloudflared-linux-arm64.tgz"
+                CLOUDFLARED_ASSET="cloudflared-linux-arm64"
+                CLOUDFLARED_IS_ARCHIVE=0
                 ;;
             *)
                 pause_and_exit "No cloudflared download is available for this computer."
                 ;;
         esac
-        if ! command -v curl >/dev/null 2>&1 || ! command -v tar >/dev/null 2>&1; then
-            pause_and_exit "curl and tar are required to install cloudflared."
+        if ! command -v curl >/dev/null 2>&1; then
+            pause_and_exit "curl is required to install cloudflared."
+        fi
+        if [ "$CLOUDFLARED_IS_ARCHIVE" = 1 ] &&
+            ! command -v tar >/dev/null 2>&1; then
+            pause_and_exit "tar is required to install cloudflared on macOS."
         fi
         mkdir -p "$TOOLS_DIR" || pause_and_exit "Could not create the .tools directory."
         CLOUDFLARED="$TOOLS_DIR/cloudflared"
         if [ ! -x "$CLOUDFLARED" ]; then
-            archive="$TOOLS_DIR/$CLOUD_FLARED_ARCHIVE"
             echo "Downloading cloudflared..."
-            if ! curl -fsSL \
-                "https://github.com/cloudflare/cloudflared/releases/latest/download/$CLOUD_FLARED_ARCHIVE" \
-                -o "$archive"; then
+            if [ "$CLOUDFLARED_IS_ARCHIVE" = 1 ]; then
+                archive="$TOOLS_DIR/$CLOUDFLARED_ASSET"
+                if ! curl -fsSL \
+                    "https://github.com/cloudflare/cloudflared/releases/latest/download/$CLOUDFLARED_ASSET" \
+                    -o "$archive"; then
+                    pause_and_exit "Could not download cloudflared."
+                fi
+                if ! tar -xzf "$archive" -C "$TOOLS_DIR"; then
+                    pause_and_exit "Could not unpack cloudflared."
+                fi
+            elif ! curl -fsSL \
+                "https://github.com/cloudflare/cloudflared/releases/latest/download/$CLOUDFLARED_ASSET" \
+                -o "$CLOUDFLARED"; then
                 pause_and_exit "Could not download cloudflared."
-            fi
-            if ! tar -xzf "$archive" -C "$TOOLS_DIR"; then
-                pause_and_exit "Could not unpack cloudflared."
             fi
             chmod +x "$CLOUDFLARED" || pause_and_exit "Could not make cloudflared executable."
         fi

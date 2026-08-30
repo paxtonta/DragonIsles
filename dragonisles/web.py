@@ -978,7 +978,7 @@ LOGIN_HTML = """<!doctype html>
 <script>
 async function join(event){event.preventDefault();let passphrase=event.target.passphrase.value;
  let response=await fetch('/api/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase})});
- if(response.ok)location.href='/';else document.getElementById('error').textContent='Unable to join game.';
+ if(response.ok)location.href='/';else{let message='Unable to join game.';try{let body=await response.json();if(body.error==='both seats are taken')message='This game already has two players.';else if(body.error==='invalid passphrase')message='That passphrase is not correct.'}catch{}document.getElementById('error').textContent=message}
 }
 </script></body></html>"""
 

@@ -1106,10 +1106,11 @@ def test_passphrase_assigns_two_seats_and_rejects_a_third():
         status, _, _ = _web_request(server, "GET", "/api/state")
         assert status == 403
 
-        status, _, _ = _web_request(
+        status, _, body = _web_request(
             server, "POST", "/api/join", {"passphrase": "wrong"}
         )
         assert status == 403
+        assert body == {"error": "invalid passphrase"}
 
         status, headers, body = _web_request(
             server, "POST", "/api/join", {"passphrase": "test123"}

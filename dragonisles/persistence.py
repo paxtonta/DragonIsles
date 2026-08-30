@@ -36,7 +36,13 @@ def save(
             "names": dict(names or {}),
             "boat": boat
             if boat is not None
-            else {"answers": {}, "result": None, "decided": True},
+            else {
+                "answers": {},
+                "times": {},
+                "stage": "date",
+                "result": None,
+                "decided": True,
+            },
         }
         if first_turn is not None:
             payload["first_turn"] = first_turn
@@ -64,7 +70,14 @@ def load(
         auth = payload["auth"]
         names = payload.get("names", {})
         boat = payload.get(
-            "boat", {"answers": {}, "result": None, "decided": True}
+            "boat",
+            {
+                "answers": {},
+                "times": {},
+                "stage": "date",
+                "result": None,
+                "decided": True,
+            },
         )
         first_turn = payload.get(
             "first_turn", {"result": None, "decided": True}
@@ -98,6 +111,14 @@ def load(
                 or not isinstance(answer, str)
                 for seat, answer in boat["answers"].items()
             )
+            or not isinstance(boat.get("times", {}), dict)
+            or any(
+                type(seat) is not int
+                or seat not in (0, 1)
+                or not isinstance(raw, str)
+                for seat, raw in boat.get("times", {}).items()
+            )
+            or boat.get("stage", "date") not in {"date", "time"}
             or not isinstance(boat.get("decided"), bool)
             or not (
                 boat.get("result") is None
@@ -116,6 +137,8 @@ def load(
             raise ValueError("invalid first-turn state")
         normalized_boat = {
             "answers": dict(boat["answers"]),
+            "times": dict(boat.get("times", {})),
+            "stage": boat.get("stage", "date"),
             "result": boat["result"],
             "decided": boat["decided"],
         }

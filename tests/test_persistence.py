@@ -80,7 +80,13 @@ def test_save_load_round_trip_preserves_game_state(tmp_path):
     assert mode == "versus"
     assert auth == {"first": 0, "second": 1}
     assert names == {0: "Alice", 1: "Bob"}
-    assert boat == {"answers": {}, "result": None, "decided": True}
+    assert boat == {
+        "answers": {},
+        "times": {},
+        "stage": "date",
+        "result": None,
+        "decided": True,
+    }
     assert _snapshot(game) == expected
     assert game.interaction is None
 
@@ -167,21 +173,71 @@ def test_pending_boat_question_round_trips(tmp_path):
     assert loaded is not None
     assert loaded[4] == {
         "answers": {0: "last week"},
+        "times": {},
+        "stage": "date",
         "result": None,
         "decided": False,
     }
     restored = WebSession("bot")
     restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
     assert restored.state(0)["boat"] == {
+        "stage": "date",
         "answered": True,
         "mine": "last week",
         "waiting": True,
     }
     assert restored.state(1)["boat"] == {
+        "stage": "date",
         "answered": False,
         "mine": None,
         "waiting": False,
     }
+
+
+def test_pending_boat_time_round_trips(tmp_path):
+    path = tmp_path / "boat-time.pkl"
+    source = WebSession("versus", state_path=path)
+    source.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
+    source.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
+    source.action({"action": "boat_time", "text": "9am"}, seat=0)
+
+    loaded = load(path)
+
+    assert loaded is not None
+    assert loaded[4] == {
+        "answers": {0: "6 Aug", 1: "6 Aug"},
+        "times": {0: "9am"},
+        "stage": "time",
+        "result": None,
+        "decided": False,
+    }
+    restored = WebSession("bot")
+    restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
+    assert restored.state(0)["boat"]["mine"] == "9am"
+    assert restored.state(0)["boat"]["waiting"] is True
+    assert restored.state(1)["boat"]["mine"] is None
+    assert restored.first_turn_decided is False
+
+
+def test_legacy_boat_save_without_times_loads_as_date_stage(tmp_path):
+    source = WebSession("versus")
+    path = tmp_path / "legacy-boat.pkl"
+    save(
+        path,
+        source.mode,
+        source.game,
+        {},
+        boat={"answers": {0: "last week"}, "result": None, "decided": False},
+    )
+
+    loaded = load(path)
+
+    assert loaded is not None
+    assert loaded[4]["times"] == {}
+    assert loaded[4]["stage"] == "date"
+    restored = WebSession("bot")
+    restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
+    assert restored.state(0)["boat"]["stage"] == "date"
 
 
 def test_corrupt_state_file_starts_fresh_game(tmp_path):
@@ -326,7 +382,13 @@ def test_legacy_state_without_names_loads_with_empty_mapping(tmp_path):
 
     assert loaded is not None
     assert loaded[3] == {}
-    assert loaded[4] == {"answers": {}, "result": None, "decided": True}
+    assert loaded[4] == {
+        "answers": {},
+        "times": {},
+        "stage": "date",
+        "result": None,
+        "decided": True,
+    }
 
 
 @pytest.mark.parametrize(
@@ -351,6 +413,27 @@ def test_invalid_persisted_names_are_rejected(tmp_path, names):
     (
         {"answers": {0: 1}, "result": None, "decided": False},
         {"answers": {2: "today"}, "result": None, "decided": False},
+        {
+            "answers": {},
+            "times": {0: 1},
+            "stage": "time",
+            "result": None,
+            "decided": False,
+        },
+        {
+            "answers": {},
+            "times": {2: "9am"},
+            "stage": "time",
+            "result": None,
+            "decided": False,
+        },
+        {
+            "answers": {},
+            "times": {},
+            "stage": "invalid",
+            "result": None,
+            "decided": False,
+        },
         {"answers": {}, "result": 1, "decided": False},
         {"answers": {}, "result": None, "decided": "no"},
     ),

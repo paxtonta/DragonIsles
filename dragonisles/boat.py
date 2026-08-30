@@ -22,6 +22,13 @@ class BoatAnswer:
     followup: str | None = None
 
 
+@dataclass(frozen=True)
+class BoatTime:
+    raw: str
+    start: int
+    end: int
+
+
 _MONTHS = {
     name.casefold(): number
     for number, names in enumerate(
@@ -79,10 +86,91 @@ _NUMBER_WORDS = {
 }
 _NUMBER_WORDS.update({"a": 1, "an": 1})
 
+_TIME_ZONES = {
+    "et": 3 * 60,
+    "edt": 3 * 60,
+    "est": 3 * 60,
+    "ct": 2 * 60,
+    "cdt": 2 * 60,
+    "cst": 2 * 60,
+    "mt": 60,
+    "mdt": 60,
+    "mst": 60,
+    "pt": 0,
+    "pdt": 0,
+    "pst": 0,
+    "utc": 8 * 60,
+    "gmt": 8 * 60,
+}
+TIME_FOLLOWUP = (
+    'That is not precise enough to settle the tie. Give a clock time, '
+    'e.g. "9am".'
+)
+
 
 def _clean(text: str) -> str:
     text = " ".join(text.strip().split())
     return "".join(character for character in text if character.isprintable())
+
+
+def _time_interval(start: int, end: int, offset: int) -> tuple[int, int]:
+    # Time zones use fixed offsets; they are deliberately not DST-exact.
+    return (
+        min(23 * 60 + 59, max(0, start - offset)),
+        min(23 * 60 + 59, max(0, end - offset)),
+    )
+
+
+def parse_boat_time(text: str) -> BoatTime | None:
+    raw = _clean(text)
+    if not raw:
+        return None
+    normalized = raw.casefold()
+    zone_match = re.search(
+        r"(?:\s+)(et|edt|est|ct|cdt|cst|mt|mdt|mst|pt|pdt|pst|utc|gmt)$",
+        normalized,
+    )
+    zone = _TIME_ZONES[zone_match.group(1)] if zone_match else 0
+    clock = normalized[: zone_match.start()].rstrip() if zone_match else normalized
+
+    ranges = {
+        "morning": (5 * 60, 11 * 60 + 59),
+        "afternoon": (12 * 60, 16 * 60 + 59),
+        "evening": (17 * 60, 20 * 60 + 59),
+        "night": (21 * 60, 23 * 60 + 59),
+    }
+    if clock in ranges:
+        start, end = ranges[clock]
+        start, end = _time_interval(start, end, zone)
+        return BoatTime(raw, start, end)
+
+    if clock == "noon":
+        minutes = 12 * 60
+    elif clock == "midnight":
+        minutes = 0
+    else:
+        match = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*([ap])m", clock)
+        if match is not None:
+            hour, minute, meridiem = match.groups()
+            hour = int(hour)
+            minute = int(minute or 0)
+            if not 1 <= hour <= 12 or minute > 59:
+                return None
+            if hour == 12:
+                hour = 0
+            if meridiem == "p":
+                hour += 12
+            minutes = hour * 60 + minute
+        else:
+            match = re.fullmatch(r"(\d{1,2}):(\d{2})", clock)
+            if match is None:
+                return None
+            hour, minute = (int(value) for value in match.groups())
+            if hour > 23 or minute > 59:
+                return None
+            minutes = hour * 60 + minute
+    start, end = _time_interval(minutes, minutes, zone)
+    return BoatTime(raw, start, end)
 
 
 def _clamp(value: date, today: date) -> date:
@@ -253,7 +341,8 @@ def resolve_first_seat(
     answers: dict[int, BoatAnswer],
     rng: random.Random,
     names: dict[int, str],
-) -> tuple[int, str]:
+    times: dict[int, BoatTime] | None = None,
+) -> tuple[int, str] | None:
     first = answers[0]
     second = answers[1]
     if first.tier == 0 or second.tier == 0:
@@ -282,8 +371,34 @@ def resolve_first_seat(
             explanation
             + f"{names[winner]} travelled by boat most recently and goes first.",
         )
+    if times is not None:
+        return resolve_boat_times(answers, times, rng, names)
     winner = rng.randrange(2)
     return (
         winner,
         explanation + "neither answer was more recent, so the first turn was drawn at random.",
+    )
+
+
+def resolve_boat_times(
+    answers: dict[int, BoatAnswer],
+    times: dict[int, BoatTime],
+    rng: random.Random,
+    names: dict[int, str],
+) -> tuple[int, str] | None:
+    first = times[0]
+    second = times[1]
+    first_display = f'{names[0]}: "{answers[0].raw}" at {first.raw}'
+    second_display = f'{names[1]}: "{answers[1].raw}" at {second.raw}'
+    explanation = f"{first_display} · {second_display} — "
+    if first.start > second.end:
+        return 0, explanation + f"{names[0]} travelled later that day and goes first."
+    if second.start > first.end:
+        return 1, explanation + f"{names[1]} travelled later that day and goes first."
+    if first.start != first.end or second.start != second.end:
+        return None
+    winner = rng.randrange(2)
+    return (
+        winner,
+        explanation + "both at the same time, so the first turn was drawn at random.",
     )

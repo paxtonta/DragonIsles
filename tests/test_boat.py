@@ -6,7 +6,9 @@ import pytest
 from dragonisles.boat import (
     CHILDHOOD_FOLLOWUP,
     BoatAnswer,
+    BoatTime,
     parse_boat_answer,
+    parse_boat_time,
     resolve_first_seat,
 )
 
@@ -104,6 +106,46 @@ def test_other_unreadable_answers_have_no_followup():
     assert answer.followup is None
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    (
+        ("9am", (540, 540)),
+        ("9 am", (540, 540)),
+        ("9:30am", (570, 570)),
+        ("9:30 pm", (1290, 1290)),
+        ("12am", (0, 0)),
+        ("12pm", (720, 720)),
+        ("14:00", (840, 840)),
+        ("09:30", (570, 570)),
+        ("noon", (720, 720)),
+        ("midnight", (0, 0)),
+        ("17:00 et", (840, 840)),
+        ("17:00 ct", (900, 900)),
+        ("17:00 mt", (960, 960)),
+        ("17:00 pt", (1020, 1020)),
+        ("17:00 utc", (540, 540)),
+        ("5pm GMT", (540, 540)),
+        ("2am et", (0, 0)),
+        ("morning", (300, 719)),
+        ("afternoon", (720, 1019)),
+        ("evening", (1020, 1259)),
+        ("night", (1260, 1439)),
+        ("5", None),
+        ("17", None),
+        ("don't know", None),
+        ("gibberish", None),
+    ),
+)
+def test_parse_boat_time(text, expected):
+    parsed = parse_boat_time(text)
+    if expected is None:
+        assert parsed is None
+    else:
+        assert parsed is not None
+        assert (parsed.start, parsed.end) == expected
+        assert parsed.raw == " ".join(text.strip().split())
+
+
 def test_two_years_ago_is_a_numeric_date():
     answer = parse_boat_answer("2 years ago", TODAY)
     assert answer.tier == 3
@@ -163,3 +205,42 @@ def test_resolve_first_seat_draws_equal_answers_deterministically():
     )
     assert winner == expected
     assert "drawn at random" in explanation
+
+
+def test_resolve_first_seat_uses_later_same_day_time():
+    answers = {
+        0: BoatAnswer("6 Aug", 3, TODAY),
+        1: BoatAnswer("6 Aug", 3, TODAY),
+    }
+    times = {
+        0: BoatTime("2:30pm", 870, 870),
+        1: BoatTime("9am", 540, 540),
+    }
+    winner, explanation = resolve_first_seat(
+        answers, random.Random(1), {0: "Crendia", 1: "Ari"}, times=times
+    )
+    assert winner == 0
+    assert explanation == (
+        'Crendia: "6 Aug" at 2:30pm · Ari: "6 Aug" at 9am — '
+        "Crendia travelled later that day and goes first."
+    )
+
+
+def test_resolve_first_seat_draws_equal_same_day_times():
+    answers = {
+        0: BoatAnswer("6 Aug", 3, TODAY),
+        1: BoatAnswer("6 Aug", 3, TODAY),
+    }
+    times = {
+        0: BoatTime("9am", 540, 540),
+        1: BoatTime("9am", 540, 540),
+    }
+    expected = random.Random(22).randrange(2)
+    winner, explanation = resolve_first_seat(
+        answers, random.Random(22), {0: "Crendia", 1: "Ari"}, times=times
+    )
+    assert winner == expected
+    assert (
+        'Crendia: "6 Aug" at 9am · Ari: "6 Aug" at 9am — '
+        "both at the same time, so the first turn was drawn at random."
+    ) == explanation

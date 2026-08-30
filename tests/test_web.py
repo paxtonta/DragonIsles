@@ -18,7 +18,9 @@ from dragonisles.treasures import Treasure
 from dragonisles.web import (
     HTML,
     Handler,
+    LOGIN_HTML,
     WebSession,
+    _clean_name,
     configure,
     serialize_card,
     serialize_ladders,
@@ -1147,6 +1149,104 @@ def test_passphrase_assigns_two_seats_and_rejects_a_third():
         server.shutdown()
         server.server_close()
         configure("bot", None)
+
+
+def test_versus_names_are_sanitized_and_limited_to_their_seat():
+    configure("versus", "test123")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert _clean_name("  Alice \t  Smith \n") == "Alice Smith"
+        assert _clean_name("x" * 21) == "x" * 20
+        assert _clean_name("\x00\t\n ") is None
+        assert _clean_name(123) is None
+
+        status, headers, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "\x00\t\n "},
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+        first_cookie = next(value for key, value in headers if key == "Set-Cookie")
+        first_cookie = first_cookie.split(";", 1)[0]
+
+        status, _, body = _web_request(
+            server, "GET", "/api/state", cookie=first_cookie
+        )
+        assert status == 200
+        assert body["seat_name"] == "Player 1"
+        assert body["opponent_name"] == "Player 2"
+
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "  <b>x  "},
+            cookie=first_cookie,
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+
+        status, headers, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Bob"},
+        )
+        assert status == 200
+        assert body == {"seat": 1}
+        second_cookie = next(value for key, value in headers if key == "Set-Cookie")
+        second_cookie = second_cookie.split(";", 1)[0]
+
+        status, _, body = _web_request(
+            server, "GET", "/api/state", cookie=second_cookie
+        )
+        assert status == 200
+        assert body["seat_name"] == "Bob"
+        assert body["opponent_name"] == "<b>x"
+
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Alice Again"},
+            cookie=first_cookie,
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+        status, _, body = _web_request(
+            server, "GET", "/api/state", cookie=first_cookie
+        )
+        assert status == 200
+        assert body["seat_name"] == "Alice Again"
+        assert body["opponent_name"] == "Bob"
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)
+
+
+def test_names_survive_new_game_and_bot_mode_ignores_them():
+    session = WebSession("versus")
+    session.set_seat_name(0, "Alice")
+    session.new_game()
+    assert session.state(0)["seat_name"] == "Alice"
+    assert session.state(0)["opponent_name"] == "Player 2"
+
+    bot_session = WebSession("bot")
+    bot_name = bot_session.game.state.players[0].name
+    bot_session.set_seat_name(0, "Should not apply")
+    assert bot_session.game.state.players[0].name == bot_name
+
+
+def test_login_name_and_state_names_are_escaped():
+    assert '<input name="name" type="text"' in LOGIN_HTML
+    assert "JSON.stringify({name,passphrase})" in LOGIN_HTML
+    assert "esc(S.seat_name)" in HTML
+    assert "esc(S.opponent_name)" in HTML
 
 
 def test_mode_switch_reassigns_authenticated_seats():

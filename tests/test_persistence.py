@@ -1,8 +1,11 @@
 import http.client
 import json
+import pickle
 import threading
 
 from http.server import ThreadingHTTPServer
+
+import pytest
 
 from dragonisles.bot import Decision
 from dragonisles.persistence import load, save
@@ -61,20 +64,31 @@ def test_save_load_round_trip_preserves_game_state(tmp_path):
     expected = _snapshot(source.game)
     path = tmp_path / "game.pkl"
 
-    save(path, source.mode, source.game, {"first": 0, "second": 1})
+    source.set_seat_name(0, "Alice")
+    source.set_seat_name(1, "Bob")
+    save(
+        path,
+        source.mode,
+        source.game,
+        {"first": 0, "second": 1},
+        source.seat_names,
+    )
     loaded = load(path)
 
     assert loaded is not None
-    mode, game, auth = loaded
+    mode, game, auth, names = loaded
     assert mode == "versus"
     assert auth == {"first": 0, "second": 1}
+    assert names == {0: "Alice", 1: "Bob"}
     assert _snapshot(game) == expected
     assert game.interaction is None
 
     restored = WebSession("bot")
-    restored.restore(mode, game)
+    restored.restore(mode, game, names)
     assert _snapshot(restored.game) == expected
     assert restored.game.interaction is not None
+    assert restored.state(0)["seat_name"] == "Alice"
+    assert restored.state(0)["opponent_name"] == "Bob"
 
 
 def test_restart_keeps_authenticated_seats(tmp_path):
@@ -83,14 +97,20 @@ def test_restart_keeps_authenticated_seats(tmp_path):
     server = _serve()
     try:
         status, headers, body = _request(
-            server, "POST", "/api/join", {"passphrase": "test123"}
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Alice"},
         )
         assert status == 200
         assert body == {"seat": 0}
         cookie_zero = next(value for key, value in headers if key == "Set-Cookie")
         cookie_zero = cookie_zero.split(";", 1)[0]
         status, headers, body = _request(
-            server, "POST", "/api/join", {"passphrase": "test123"}
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Bob"},
         )
         assert status == 200
         assert body == {"seat": 1}
@@ -106,11 +126,11 @@ def test_restart_keeps_authenticated_seats(tmp_path):
         status, _, body = _request(server, "GET", "/api/state", cookie=cookie_zero)
         assert status == 200
         assert body["seat"] == 0
-        assert body["seat_name"] == "Player 1"
+        assert body["seat_name"] == "Alice"
         status, _, body = _request(server, "GET", "/api/state", cookie=cookie_one)
         assert status == 200
         assert body["seat"] == 1
-        assert body["seat_name"] == "Player 2"
+        assert body["seat_name"] == "Bob"
     finally:
         server.shutdown()
         server.server_close()
@@ -188,7 +208,7 @@ def test_turn_continues_after_restore_in_both_modes(tmp_path):
         session._save()
         loaded = load(path)
         assert loaded is not None
-        session.restore(*loaded[:2])
+        session.restore(loaded[0], loaded[1], loaded[3])
         session.action({"action": "prepare_start"}, seat=0)
         while session.pending_prepare is not None:
             session.action({"action": "prepare_source", "source": "deck"}, seat=0)
@@ -222,3 +242,36 @@ def test_restore_resumes_a_bot_turn():
 
     assert bot.prepares == prepares + 1
     assert restored.game.state.current_player == 0
+
+
+def test_legacy_state_without_names_loads_with_empty_mapping(tmp_path):
+    source = WebSession("versus")
+    path = tmp_path / "legacy.pkl"
+    save(path, source.mode, source.game, {})
+    with path.open("rb") as stream:
+        payload = pickle.load(stream)
+    payload.pop("names")
+    with path.open("wb") as stream:
+        pickle.dump(payload, stream, protocol=5)
+
+    loaded = load(path)
+
+    assert loaded is not None
+    assert loaded[3] == {}
+
+
+@pytest.mark.parametrize(
+    "names",
+    ({0: 1}, {2: "Invalid seat"}, [("0", "Invalid shape")]),
+)
+def test_invalid_persisted_names_are_rejected(tmp_path, names):
+    source = WebSession("versus")
+    path = tmp_path / "invalid.pkl"
+    save(path, source.mode, source.game, {})
+    with path.open("rb") as stream:
+        payload = pickle.load(stream)
+    payload["names"] = names
+    with path.open("wb") as stream:
+        pickle.dump(payload, stream, protocol=5)
+
+    assert load(path) is None

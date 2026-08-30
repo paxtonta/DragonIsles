@@ -45,6 +45,7 @@ class WebSession:
         self.lock = threading.RLock()
         self.mode = mode
         self.state_path = state_path
+        self.seat_names: dict[int, str] = {}
         self._reset()
 
     def _interaction(self) -> GameInteraction:
@@ -76,6 +77,7 @@ class WebSession:
             self.game = Game(encounters, rng=rng, players=players, interaction=interaction)
         else:
             self.game = Game(encounters, interaction=interaction)
+        self._apply_seat_names()
         self.pending: dict[str, Any] = {}
         self.pending_challenge: ChallengeProgress | None = None
         self.pending_skill_tracks: tuple[str, ...] | None = None
@@ -94,15 +96,22 @@ class WebSession:
             self._reset()
             self._save()
 
-    def restore(self, mode: str, game: Game) -> None:
+    def restore(
+        self,
+        mode: str,
+        game: Game,
+        seat_names: dict[int, str] | None = None,
+    ) -> None:
         """Adopt a clean persisted game and reconnect browser callbacks."""
         if mode not in {"bot", "versus"}:
             raise ValueError("mode must be bot or versus")
         with self.lock:
             self.mode = mode
+            self.seat_names = dict(seat_names or {})
             self.events = []
             self.game = game
             self.game.interaction = self._interaction()
+            self._apply_seat_names()
             self.pending = {}
             self.pending_challenge = None
             self.pending_skill_tracks = None
@@ -126,7 +135,29 @@ class WebSession:
             or self.game.pending_trader_draw is not None
         ):
             return
-        save_state(self.state_path, self.mode, self.game, AUTH_SESSIONS)
+        save_state(
+            self.state_path,
+            self.mode,
+            self.game,
+            AUTH_SESSIONS,
+            self.seat_names,
+        )
+
+    def _apply_seat_names(self) -> None:
+        if self.mode != "versus":
+            return
+        for seat, player in enumerate(self.game.state.players):
+            player.name = self.seat_names.get(seat, f"Player {seat + 1}")
+
+    def set_seat_name(self, seat: int, name: str) -> None:
+        with self.lock:
+            if self.mode != "versus":
+                return
+            player = self.player_for_seat(seat)
+            self.seat_names[seat] = name
+            player.name = name
+            self.revision += 1
+            self._save()
 
     @property
     def human(self) -> Player:
@@ -967,17 +998,27 @@ AUTH_SESSIONS: dict[str, int] = {}
 SECURE_COOKIE = False
 DRAGONISLES_DIR = Path(__file__).parent
 
+
+def _clean_name(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = " ".join(value.strip().split())
+    cleaned = "".join(character for character in cleaned if character.isprintable())[:20]
+    return cleaned or None
+
+
 LOGIN_HTML = """<!doctype html>
 <html><head><meta charset="utf-8"><title>DragonIsles</title></head>
 <body><main><h1>DragonIsles</h1>
 <p>This private game is for whoever has the link and passphrase.</p>
 <form onsubmit="join(event)">
+<label>Your name <input name="name" type="text" maxlength="20"></label>
 <label>Passphrase <input name="passphrase" type="password" autofocus></label>
 <button type="submit">Join game</button>
 </form><p id="error"></p></main>
 <script>
-async function join(event){event.preventDefault();let passphrase=event.target.passphrase.value;
- let response=await fetch('/api/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase})});
+async function join(event){event.preventDefault();let name=event.target.elements.name.value,passphrase=event.target.elements.passphrase.value;
+ let response=await fetch('/api/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,passphrase})});
  if(response.ok)location.href='/';else{let message='Unable to join game.';try{let body=await response.json();if(body.error==='both seats are taken')message='This game already has two players.';else if(body.error==='invalid passphrase')message='That passphrase is not correct.'}catch{}document.getElementById('error').textContent=message}
 }
 </script></body></html>"""
@@ -996,9 +1037,10 @@ def configure(
         AUTH_SESSIONS.clear()
         if loaded is not None and loaded[0] == mode:
             SESSION.state_path = state_path
-            SESSION.restore(mode, loaded[1])
+            SESSION.restore(mode, loaded[1], loaded[3])
             AUTH_SESSIONS.update(loaded[2])
         else:
+            SESSION.seat_names = {}
             SESSION.new_game(mode)
             SESSION.state_path = state_path
             SESSION._save()
@@ -1117,6 +1159,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "invalid passphrase"}, HTTPStatus.FORBIDDEN)
             return
         token = self._cookie_token()
+        name = _clean_name(payload.get("name"))
         with SESSION.lock:
             seat = AUTH_SESSIONS.get(token) if token is not None else None
             if seat is None:
@@ -1137,7 +1180,10 @@ class Handler(BaseHTTPRequestHandler):
                     seat = 0
                 token = secrets.token_urlsafe(32)
                 AUTH_SESSIONS[token] = seat
-            SESSION._save()
+            if SESSION.mode == "versus" and name is not None:
+                SESSION.set_seat_name(seat, name)
+            else:
+                SESSION._save()
         self.send_json(
             {"seat": seat},
             cookie=(

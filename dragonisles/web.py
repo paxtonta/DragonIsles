@@ -275,7 +275,7 @@ class WebSession:
             player = self.player_for_seat(seat)
             action = payload.get("action")
             if action == "new_game":
-                self.new_game(payload.get("mode"))
+                self.new_game()
                 return
             if self.game.state.game_over:
                 raise ValueError("the game is over")
@@ -866,7 +866,7 @@ button.secondary{background:#4d6180;color:#e8eef7}.gap{display:inline-block;widt
 pre{white-space:pre-wrap}.events{max-height:180px;overflow:auto}
 @media(max-width:800px){.grid{grid-template-columns:1fr}.encounters{grid-template-columns:1fr}}
 </style></head>
-<body><main><h1>DragonIsles <button class=secondary id=theme-toggle onclick="toggleTheme()">Use light mode</button> <button class=secondary type=button onclick="newGame('bot')">New game (vs Bot)</button> <button class=secondary type=button onclick="newGame('versus')">New game (vs Friend)</button></h1><div id="app">Loading…</div></main>
+<body><main><h1>DragonIsles <button class=secondary id=theme-toggle onclick="toggleTheme()">Use light mode</button> <button class=secondary type=button onclick="newGame()">New game</button></h1><div id="app">Loading…</div></main>
 <script>
 let S=null, selected=null, method=null, cards=[], rerollPicks=[], discardPicks=[], botTimer=null, requestInFlight=false, stateRevision=0, stateRequest=0;
 document.addEventListener('click',e=>{
@@ -879,7 +879,7 @@ document.addEventListener('click',e=>{
 });
 function setTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('dragonisles-theme',theme);document.getElementById('theme-toggle').textContent=theme==='dark'?'Use light mode':'Use dark mode'}
 function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
-function newGame(mode){post('/api/action',{action:'new_game',mode})}
+function newGame(){post('/api/action',{action:'new_game'})}
 async function get(){let request=++stateRequest;let next=await (await fetch('/api/state')).json();if(request!==stateRequest)return;S=next;stateRevision++;render()}
 async function post(path,body){if(body.action==='skill'&&S)body.revision=S.revision;console.log('[DragonIsles action]',JSON.stringify({path:path,body:body,stateRevision:stateRevision,turn:S&&S.turn,humanTurn:S&&S.human_turn,challenge:S&&S.challenge}));if(S&&S.game_over&&body.action!=='new_game')return;if(requestInFlight)return;requestInFlight=true;try{if(body.action==='new_game'||body.action==='skill'){clearTimeout(botTimer);botTimer=null}let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d=await r.json();console.log('[DragonIsles response]',JSON.stringify({action:body.action,ok:r.ok,status:r.status,error:r.ok?null:d.error}));if(!r.ok){await get();alert(d.error);return}if(body.action==='discard')discardPicks=[];selected=null;method=null;cards=[];rerollPicks=[];discardPicks=[];S=d;stateRevision++;render()}finally{requestInFlight=false}}
 function esc(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -1056,8 +1056,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def _seat(self) -> int | None:
         if PASSPHRASE is None:
-            if SESSION.mode == "versus":
-                return None
             return 0
         token = self._cookie_token()
         if token is None:
@@ -1128,17 +1126,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = SESSION.options(payload, seat)
             elif path == "/api/action":
                 with SESSION.lock:
-                    previous_mode = SESSION.mode
                     SESSION.action(payload, seat)
-                    if (
-                        payload.get("action") == "new_game"
-                        and SESSION.mode != previous_mode
-                    ):
-                        token = self._cookie_token()
-                        AUTH_SESSIONS.clear()
-                        if token is not None:
-                            AUTH_SESSIONS[token] = 0
-                        SESSION._save()
                 SESSION.revision += 1
                 body = SESSION.state(seat)
             else:

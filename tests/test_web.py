@@ -43,6 +43,15 @@ def _web_request(server, method, path, body=None, cookie=None):
     return response.status, response.getheaders(), json.loads(data or b"{}")
 
 
+def _web_html_request(server, method, path):
+    connection = http.client.HTTPConnection(*server.server_address)
+    connection.request(method, path)
+    response = connection.getresponse()
+    data = response.read().decode()
+    connection.close()
+    return response.status, data
+
+
 def _relative_luminance(color):
     channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
     linear = [
@@ -250,6 +259,14 @@ def test_game_over_html_hides_pending_choice_panels():
     assert "S.game_over?'Game over'" in HTML
     assert "${S.game_over?'':` onclick=\"pick('${c.id}')\"`}" in HTML
     assert "__ID__" not in HTML
+
+
+def test_header_has_one_current_mode_new_game_button():
+    assert HTML.count('onclick="newGame()"') == 1
+    assert "New game</button>" in HTML
+    assert "newGame('bot')" not in HTML
+    assert "newGame('versus')" not in HTML
+    assert "function newGame(){post('/api/action',{action:'new_game'})}" in HTML
 
 
 def test_live_encounter_markup_has_balanced_pick_attribute():
@@ -1249,7 +1266,7 @@ def test_login_name_and_state_names_are_escaped():
     assert "esc(S.opponent_name)" in HTML
 
 
-def test_mode_switch_reassigns_authenticated_seats():
+def test_new_game_cannot_switch_modes():
     configure("bot", "test123")
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1271,14 +1288,8 @@ def test_mode_switch_reassigns_authenticated_seats():
             cookie=first_cookie,
         )
         assert status == 200
-        assert body["mode"] == "versus"
+        assert body["mode"] == "bot"
         assert body["seat"] == 0
-
-        status, _, body = _web_request(
-            server, "POST", "/api/join", {"passphrase": "test123"}
-        )
-        assert status == 200
-        assert body == {"seat": 1}
     finally:
         server.shutdown()
         server.server_close()
@@ -1302,20 +1313,46 @@ def test_non_ascii_passphrase_is_rejected_without_server_error():
         configure("bot", None)
 
 
-def test_versus_without_passphrase_requires_authentication_but_bot_does_not():
+def test_no_passphrase_allows_access_in_both_modes():
     configure("versus", None)
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         status, _, _ = _web_request(server, "GET", "/api/state")
-        assert status == 403
+        assert status == 200
 
         configure("bot", None)
         status, _, body = _web_request(server, "GET", "/api/state")
         assert status == 200
         assert body["mode"] == "bot"
         assert body["seat"] == 0
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)
+
+
+def test_no_passphrase_new_game_cannot_lock_out_bot_mode():
+    configure("bot", None)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/action",
+            {"action": "new_game", "mode": "versus"},
+        )
+        assert status == 200
+        assert body["mode"] == "bot"
+        assert body["seat"] == 0
+
+        status, page = _web_html_request(server, "GET", "/")
+        assert status == 200
+        assert "<input name=\"name\"" not in page
+        assert "<div id=\"app\">" in page
     finally:
         server.shutdown()
         server.server_close()

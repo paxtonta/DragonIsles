@@ -24,6 +24,7 @@ from .combos import is_legal, is_legal_reason
 from .characters import CHARACTERS, SKILL_TRACKS, TrackStep, available_tracks
 from .encounters import Encounter, load_encounters
 from .engine import ChallengeProgress, Game, GameInteraction, Player
+from .persistence import load, save
 from .potions import PLUS_TWO
 from .scoring import trophy_holders
 from .treasures import Treasure
@@ -35,18 +36,18 @@ ROOT = Path(__file__).parent.parent
 class WebSession:
     """Owns one browser game's mutable state and serializes its requests."""
 
-    def __init__(self, mode: str = "bot") -> None:
+    def __init__(
+        self, mode: str = "bot", state_path: Path | None = None
+    ) -> None:
         if mode not in {"bot", "versus"}:
             raise ValueError("mode must be bot or versus")
         self.lock = threading.RLock()
         self.mode = mode
+        self.state_path = state_path
         self._reset()
 
-    def _reset(self) -> None:
-        """Deal a new game whose engine callbacks belong to this session."""
-        self.events: list[str] = []
-        encounters = load_encounters(ROOT / "data" / "encounters.json")
-        interaction = GameInteraction(
+    def _interaction(self) -> GameInteraction:
+        return GameInteraction(
             choose_discards=self._choose_discards,
             choose_treasure=self._defer_treasure,
             choose_treasure_card=self._defer_treasure_card,
@@ -58,6 +59,12 @@ class WebSession:
             show_challenge_result=self._show_result,
             announce=self.events.append,
         )
+
+    def _reset(self) -> None:
+        """Deal a new game whose engine callbacks belong to this session."""
+        self.events: list[str] = []
+        encounters = load_encounters(ROOT / "data" / "encounters.json")
+        interaction = self._interaction()
         if self.mode == "versus":
             rng = random.Random()
             characters = rng.sample(list(CHARACTERS.values()), 2)
@@ -78,11 +85,46 @@ class WebSession:
         self._run_bots()
 
     def new_game(self, mode: str | None = None) -> None:
-        if mode is not None:
-            if mode not in {"bot", "versus"}:
-                raise ValueError("mode must be bot or versus")
+        with self.lock:
+            if mode is not None:
+                if mode not in {"bot", "versus"}:
+                    raise ValueError("mode must be bot or versus")
+                self.mode = mode
+            self._reset()
+            self._save()
+
+    def restore(self, mode: str, game: Game) -> None:
+        """Adopt a clean persisted game and reconnect browser callbacks."""
+        if mode not in {"bot", "versus"}:
+            raise ValueError("mode must be bot or versus")
+        with self.lock:
             self.mode = mode
-        self._reset()
+            self.events = []
+            self.game = game
+            self.game.interaction = self._interaction()
+            self.pending = {}
+            self.pending_challenge = None
+            self.pending_skill_tracks = None
+            self.pending_prepare = None
+            self.pending_bot_prepare = None
+            self.pending_free_action_discard = None
+            self.revision += 1
+
+    def _save(self) -> None:
+        if self.state_path is None:
+            return
+        if (
+            self.pending_challenge is not None
+            or self.pending_skill_tracks is not None
+            or self.pending_prepare is not None
+            or self.pending_bot_prepare is not None
+            or self.pending_free_action_discard is not None
+            or self.game.pending_discard is not None
+            or self.game.pending_treasure_draw is not None
+            or self.game.pending_trader_draw is not None
+        ):
+            return
+        save(self.state_path, self.mode, self.game, AUTH_SESSIONS)
 
     @property
     def human(self) -> Player:
@@ -191,6 +233,11 @@ class WebSession:
         self._run_bots()
 
     def action(self, payload: dict[str, Any], seat: int = 0) -> None:
+        with self.lock:
+            self._action(payload, seat)
+            self._save()
+
+    def _action(self, payload: dict[str, Any], seat: int = 0) -> None:
         with self.lock:
             player = self.player_for_seat(seat)
             action = payload.get("action")
@@ -935,14 +982,26 @@ async function join(event){event.preventDefault();let passphrase=event.target.pa
 
 
 def configure(
-    mode: str, passphrase: str | None, secure_cookie: bool = False
+    mode: str,
+    passphrase: str | None,
+    secure_cookie: bool = False,
+    state_path: Path | None = None,
 ) -> None:
     global PASSPHRASE, SECURE_COOKIE
     with SESSION.lock:
-        SESSION.new_game(mode)
+        loaded = load(state_path) if state_path is not None else None
+        SESSION.state_path = None
+        AUTH_SESSIONS.clear()
+        if loaded is not None and loaded[0] == mode:
+            SESSION.state_path = state_path
+            SESSION.restore(mode, loaded[1])
+            AUTH_SESSIONS.update(loaded[2])
+        else:
+            SESSION.new_game(mode)
+            SESSION.state_path = state_path
+            SESSION._save()
         PASSPHRASE = passphrase
         SECURE_COOKIE = secure_cookie
-        AUTH_SESSIONS.clear()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1035,6 +1094,7 @@ class Handler(BaseHTTPRequestHandler):
                         AUTH_SESSIONS.clear()
                         if token is not None:
                             AUTH_SESSIONS[token] = 0
+                        SESSION._save()
                 SESSION.revision += 1
                 body = SESSION.state(seat)
             else:
@@ -1075,6 +1135,7 @@ class Handler(BaseHTTPRequestHandler):
                     seat = 0
                 token = secrets.token_urlsafe(32)
                 AUTH_SESSIONS[token] = seat
+            SESSION._save()
         self.send_json(
             {"seat": seat},
             cookie=(
@@ -1119,11 +1180,17 @@ def main(argv: Sequence[str] | None = None) -> None:
         action="store_true",
         default=bool(os.environ.get("DRAGONISLES_SECURE_COOKIE")),
     )
+    parser.add_argument("--state-file", default=os.environ.get("DRAGONISLES_STATE_FILE"))
     args = parser.parse_args(argv)
     if args.mode == "versus" and args.passphrase is None:
-        args.passphrase = secrets.token_urlsafe(6)
+        args.passphrase = secrets.token_urlsafe(24)
         print(f"Passphrase: {args.passphrase}", flush=True)
-    configure(args.mode, args.passphrase, args.secure_cookie)
+    configure(
+        args.mode,
+        args.passphrase,
+        args.secure_cookie,
+        Path(args.state_file) if args.state_file else None,
+    )
     try:
         server = ThreadingHTTPServer((args.host, args.port), Handler)
     except OSError as exc:
@@ -1132,6 +1199,12 @@ def main(argv: Sequence[str] | None = None) -> None:
             f"Try: python3 -m dragonisles.web --port {args.port + 1}"
         ) from exc
     print(f"DragonIsles web UI: http://{args.host}:{args.port}", flush=True)
+    if args.mode == "versus":
+        print(
+            f"Share this link and passphrase: "
+            f"http://{args.host}:{args.port}/",
+            flush=True,
+        )
     server.serve_forever()
 
 

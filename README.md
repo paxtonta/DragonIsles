@@ -29,3 +29,5 @@ The vs-Bot instructions above are unchanged.
 ## Easiest way to play
 
 Double-click `Play DragonIsles.command`. If macOS blocks it as unidentified, right-click it and choose **Open**.
+Double-click `Play with a friend.command` to start a private Cloudflare quick tunnel.
+Send your friend the displayed link and passphrase.

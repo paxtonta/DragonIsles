@@ -1069,6 +1069,8 @@ def test_versus_game_has_two_human_players_and_seat_state():
 def test_versus_turn_gating_and_full_turn_handoff():
     session = WebSession("versus")
     player_one, player_two = session.game.state.players
+    session.action({"action": "boat_answer", "text": "today"}, seat=0)
+    session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
     session.game.state.current_player = 0
 
     with pytest.raises(ValueError, match="it is not your turn"):
@@ -1110,10 +1112,67 @@ def test_versus_state_hides_opponent_hand_and_potion_kinds():
 
 def test_versus_rejects_bot_continuation_actions():
     session = WebSession("versus")
+    session.action({"action": "boat_answer", "text": "today"}, seat=0)
+    session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
 
     for action in ("continue_bot", "continue_bot_discard"):
         with pytest.raises(ValueError, match="unavailable in versus mode"):
             session.action({"action": action}, seat=0)
+
+
+def test_versus_boat_question_gates_gameplay_actions():
+    session = WebSession("versus")
+
+    for action in ("attempt", "prepare_start"):
+        with pytest.raises(ValueError, match="answer the boat question first"):
+            session.action({"action": action}, seat=0)
+
+
+def test_versus_boat_answers_choose_first_seat_and_clear_gate():
+    session = WebSession("versus")
+    session.game.state.current_player = 1
+
+    session.action({"action": "boat_answer", "text": "never"}, seat=0)
+    assert session.state(0)["boat"] == {
+        "answered": True,
+        "mine": "never",
+        "waiting": True,
+    }
+    assert session.state(1)["boat"] == {
+        "answered": False,
+        "mine": None,
+        "waiting": False,
+    }
+    session.action({"action": "boat_answer", "text": "today"}, seat=1)
+
+    assert session.game.state.current_player == 1
+    assert session.state(0)["boat"] is None
+    assert session.state(1)["boat"] is None
+    assert session.state(0)["boat_result"] == session.state(1)["boat_result"]
+    assert 'Player 1: "never"' in session.state(0)["boat_result"]
+    assert 'Player 2: "today"' in session.state(0)["boat_result"]
+
+
+@pytest.mark.parametrize("text", ("??? 123", "childhood"))
+def test_versus_unreadable_boat_answer_is_not_recorded(text):
+    session = WebSession("versus")
+
+    with pytest.raises(
+        ValueError,
+        match=r'I could not read that\. Try a date like "6 Aug", "two weeks ago", or "never"\.',
+    ):
+        session.action({"action": "boat_answer", "text": text}, seat=0)
+
+    assert session.boat_answers == {}
+    assert session.state(0)["boat"]["answered"] is False
+
+
+def test_bot_mode_starts_without_a_boat_question():
+    session = WebSession("bot")
+
+    assert "boat" not in session.state()
+    with pytest.raises(ValueError, match="unavailable in bot mode"):
+        session.action({"action": "boat_answer", "text": "today"})
 
 
 def test_passphrase_assigns_two_seats_and_rejects_a_third():

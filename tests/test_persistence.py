@@ -76,15 +76,16 @@ def test_save_load_round_trip_preserves_game_state(tmp_path):
     loaded = load(path)
 
     assert loaded is not None
-    mode, game, auth, names = loaded
+    mode, game, auth, names, boat = loaded
     assert mode == "versus"
     assert auth == {"first": 0, "second": 1}
     assert names == {0: "Alice", 1: "Bob"}
+    assert boat == {"answers": {}, "result": None, "decided": True}
     assert _snapshot(game) == expected
     assert game.interaction is None
 
     restored = WebSession("bot")
-    restored.restore(mode, game, names)
+    restored.restore(mode, game, names, boat)
     assert _snapshot(restored.game) == expected
     assert restored.game.interaction is not None
     assert restored.state(0)["seat_name"] == "Alice"
@@ -140,6 +141,8 @@ def test_restart_keeps_authenticated_seats(tmp_path):
 def test_pending_prompt_does_not_overwrite_last_clean_save(tmp_path):
     path = tmp_path / "game.pkl"
     session = WebSession("versus", state_path=path)
+    session.action({"action": "boat_answer", "text": "today"}, seat=0)
+    session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
     session.game.state.current_player = 0
     session._save()
     before = load(path)
@@ -152,6 +155,33 @@ def test_pending_prompt_does_not_overwrite_last_clean_save(tmp_path):
     assert after is not None
     assert _snapshot(after[1]) == before_snapshot
     assert after[1].state.turn_number == before[1].state.turn_number
+
+
+def test_pending_boat_question_round_trips(tmp_path):
+    path = tmp_path / "boat.pkl"
+    source = WebSession("versus", state_path=path)
+    source.action({"action": "boat_answer", "text": "last week"}, seat=0)
+
+    loaded = load(path)
+
+    assert loaded is not None
+    assert loaded[4] == {
+        "answers": {0: "last week"},
+        "result": None,
+        "decided": False,
+    }
+    restored = WebSession("bot")
+    restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
+    assert restored.state(0)["boat"] == {
+        "answered": True,
+        "mine": "last week",
+        "waiting": True,
+    }
+    assert restored.state(1)["boat"] == {
+        "answered": False,
+        "mine": None,
+        "waiting": False,
+    }
 
 
 def test_corrupt_state_file_starts_fresh_game(tmp_path):
@@ -204,11 +234,14 @@ def test_turn_continues_after_restore_in_both_modes(tmp_path):
         session.game.pending_discard = None
         session.game.pending_treasure_draw = None
         session.game.pending_trader_draw = None
+        if mode == "versus":
+            session.action({"action": "boat_answer", "text": "today"}, seat=0)
+            session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
         session.game.state.current_player = 0
         session._save()
         loaded = load(path)
         assert loaded is not None
-        session.restore(loaded[0], loaded[1], loaded[3])
+        session.restore(loaded[0], loaded[1], loaded[3], loaded[4])
         session.action({"action": "prepare_start"}, seat=0)
         while session.pending_prepare is not None:
             session.action({"action": "prepare_source", "source": "deck"}, seat=0)
@@ -258,6 +291,7 @@ def test_legacy_state_without_names_loads_with_empty_mapping(tmp_path):
 
     assert loaded is not None
     assert loaded[3] == {}
+    assert loaded[4] == {"answers": {}, "result": None, "decided": True}
 
 
 @pytest.mark.parametrize(
@@ -271,6 +305,28 @@ def test_invalid_persisted_names_are_rejected(tmp_path, names):
     with path.open("rb") as stream:
         payload = pickle.load(stream)
     payload["names"] = names
+    with path.open("wb") as stream:
+        pickle.dump(payload, stream, protocol=5)
+
+    assert load(path) is None
+
+
+@pytest.mark.parametrize(
+    "boat",
+    (
+        {"answers": {0: 1}, "result": None, "decided": False},
+        {"answers": {2: "today"}, "result": None, "decided": False},
+        {"answers": {}, "result": 1, "decided": False},
+        {"answers": {}, "result": None, "decided": "no"},
+    ),
+)
+def test_invalid_persisted_boat_state_is_rejected(tmp_path, boat):
+    source = WebSession("versus")
+    path = tmp_path / "invalid-boat.pkl"
+    save(path, source.mode, source.game, {}, boat=boat)
+    with path.open("rb") as stream:
+        payload = pickle.load(stream)
+    payload["boat"] = boat
     with path.open("wb") as stream:
         pickle.dump(payload, stream, protocol=5)
 

@@ -2,8 +2,10 @@
 
 cd "$(dirname "$0")" || exit 1
 
-# shellcheck source=update-dragonisles.sh
-. ./update-dragonisles.sh
+if [ -f ./update-dragonisles.sh ]; then
+    # shellcheck source=update-dragonisles.sh
+    . ./update-dragonisles.sh
+fi
 
 pause_and_exit() {
     echo "$1"
@@ -12,7 +14,9 @@ pause_and_exit() {
     exit 1
 }
 
-dragonisles_self_update
+if command -v dragonisles_self_update >/dev/null 2>&1; then
+    dragonisles_self_update
+fi
 if [ "${DRAGONISLES_REEXEC:-}" = 1 ]; then
     exec "$0" "$@"
 fi

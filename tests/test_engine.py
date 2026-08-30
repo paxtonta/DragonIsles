@@ -24,7 +24,13 @@ from dragonisles.encounters import (
     validate_encounters,
 )
 from dragonisles.engine import Game, GameInteraction, Player, RulesConfig
-from dragonisles.potions import DRAW_TWO, PLUS_TWO, PURGE, PotionToken
+from dragonisles.potions import (
+    DRAW_TWO,
+    PLUS_TWO,
+    PURGE,
+    PotionToken,
+    default_potion_supply,
+)
 from dragonisles.scoring import ScoreBreakdown
 from dragonisles.treasures import Treasure, default_treasure_supply
 
@@ -1163,6 +1169,32 @@ def test_treasure_supply_has_requested_composition():
         "Biwa",
         "Inuharaku",
     }
+
+
+def test_potion_supply_has_requested_composition():
+    supply = default_potion_supply()
+
+    assert len(supply) == 20
+    assert Counter(potion.kind for potion in supply) == {
+        PLUS_TWO: 10,
+        DRAW_TWO: 7,
+        PURGE: 3,
+    }
+
+
+def test_potion_supply_is_seeded_and_shuffled():
+    first = Game(encounters(), rng=random.Random(1))
+    second = Game(encounters(), rng=random.Random(1))
+    different = Game(encounters(), rng=random.Random(2))
+
+    assert len(first._potion_supply) == 20
+    assert Counter(potion.kind for potion in first._potion_supply) == {
+        PLUS_TWO: 10,
+        DRAW_TWO: 7,
+        PURGE: 3,
+    }
+    assert first._potion_supply == second._potion_supply
+    assert first._potion_supply != different._potion_supply
 
 
 def test_monk_uses_potion_and_draws_one_card():

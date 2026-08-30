@@ -21,7 +21,14 @@ from .characters import (
 from .combos import is_legal
 from .dice import DIE_FACES
 from .encounters import Encounter
-from .potions import DRAW_TWO, PLUS_TWO, PURGE, PotionToken, random_potion
+from .potions import (
+    DRAW_TWO,
+    PLUS_TWO,
+    PotionSupplyFactory,
+    PURGE,
+    PotionToken,
+    default_potion_supply,
+)
 from .scoring import ScoreBreakdown, TrophyEvent, score_player, winner_key
 from .treasures import (
     Treasure,
@@ -44,8 +51,7 @@ class RulesConfig:
     played_cards_on_failure: str = "keep"
     market_refill_timing: str = "end_of_prepare"
     deck_factory: Callable[[], AdventurerDeck] = AdventurerDeck
-    potion_factory: Callable[[], PotionToken] = random_potion
-    potion_token_count: int = 20
+    potion_supply_factory: PotionSupplyFactory = default_potion_supply
     coin_token_counts: tuple[tuple[int, int], ...] = ((1, 30), (5, 10), (10, 10))
 
 
@@ -215,9 +221,8 @@ class Game:
         self.refill_encounters()
         self._treasure_supply = default_treasure_supply()
         self.rng.shuffle(self._treasure_supply)
-        self._potion_supply = [
-            self.rules.potion_factory() for _ in range(self.rules.potion_token_count)
-        ]
+        self._potion_supply = self.rules.potion_supply_factory()
+        self.rng.shuffle(self._potion_supply)
         self._used_potions: list[PotionToken] = []
         self._used_treasures: list[Treasure] = []
         self.pending_trader_draw: TraderDraw | None = None

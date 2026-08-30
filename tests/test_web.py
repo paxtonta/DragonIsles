@@ -927,7 +927,11 @@ def test_web_monk_can_choose_sneak_for_consecutive_skill_upgrades():
 
 
 def test_web_refreshes_after_rejected_skill_choice():
-    assert "if(!r.ok){await get();alert(d.error);return}" in HTML
+    assert (
+        "if(!r.ok){let boatText=body.action==='boat_answer'?body.text:null;await get();"
+        in HTML
+    )
+    assert "if(input)input.value=boatText" in HTML
     assert "requestInFlight" in HTML
     assert "stateRevision" in HTML
     assert "stateRequest" in HTML
@@ -1153,18 +1157,36 @@ def test_versus_boat_answers_choose_first_seat_and_clear_gate():
     assert 'Player 2: "today"' in session.state(0)["boat_result"]
 
 
-@pytest.mark.parametrize("text", ("??? 123", "childhood"))
-def test_versus_unreadable_boat_answer_is_not_recorded(text):
+def test_versus_unreadable_boat_answer_is_not_recorded():
     session = WebSession("versus")
 
     with pytest.raises(
         ValueError,
         match=r'I could not read that\. Try a date like "6 Aug", "two weeks ago", or "never"\.',
     ):
-        session.action({"action": "boat_answer", "text": text}, seat=0)
+        session.action({"action": "boat_answer", "text": "??? 123"}, seat=0)
 
     assert session.boat_answers == {}
     assert session.state(0)["boat"]["answered"] is False
+
+
+def test_versus_childhood_boat_answer_requests_years_and_can_be_replaced():
+    session = WebSession("versus")
+
+    with pytest.raises(
+        ValueError,
+        match=r'Roughly how many years ago was that\? Give a number of years, e\.g\. "20 years ago"\.',
+    ):
+        session.action({"action": "boat_answer", "text": "as a kid"}, seat=0)
+
+    assert session.boat_answers == {}
+    session.action({"action": "boat_answer", "text": "20 years ago"}, seat=0)
+    assert session.boat_answers[0].raw == "20 years ago"
+    assert session.state(0)["boat"] == {
+        "answered": True,
+        "mine": "20 years ago",
+        "waiting": True,
+    }
 
 
 def test_bot_mode_starts_without_a_boat_question():

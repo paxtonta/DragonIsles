@@ -316,8 +316,11 @@ class WebSession:
                 answer = parse_boat_answer(text, date.today())
                 if answer.tier == 0:
                     raise ValueError(
-                        'I could not read that. Try a date like "6 Aug", '
-                        '"two weeks ago", or "never".'
+                        answer.followup
+                        or (
+                            'I could not read that. Try a date like "6 Aug", '
+                            '"two weeks ago", or "never".'
+                        )
                     )
                 self.boat_answers[seat] = answer
                 if len(self.boat_answers) == 2:
@@ -954,7 +957,7 @@ function setTheme(theme){document.documentElement.dataset.theme=theme;localStora
 function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
 function newGame(){post('/api/action',{action:'new_game'})}
 async function get(){let request=++stateRequest;let next=await (await fetch('/api/state')).json();if(request!==stateRequest)return;S=next;stateRevision++;render()}
-async function post(path,body){if(body.action==='skill'&&S)body.revision=S.revision;console.log('[DragonIsles action]',JSON.stringify({path:path,body:body,stateRevision:stateRevision,turn:S&&S.turn,humanTurn:S&&S.human_turn,challenge:S&&S.challenge}));if(S&&S.game_over&&body.action!=='new_game')return;if(requestInFlight)return;requestInFlight=true;try{if(body.action==='new_game'||body.action==='skill'){clearTimeout(botTimer);botTimer=null}let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d=await r.json();console.log('[DragonIsles response]',JSON.stringify({action:body.action,ok:r.ok,status:r.status,error:r.ok?null:d.error}));if(!r.ok){await get();alert(d.error);return}if(body.action==='discard')discardPicks=[];selected=null;method=null;cards=[];rerollPicks=[];discardPicks=[];S=d;stateRevision++;render()}finally{requestInFlight=false}}
+async function post(path,body){if(body.action==='skill'&&S)body.revision=S.revision;console.log('[DragonIsles action]',JSON.stringify({path:path,body:body,stateRevision:stateRevision,turn:S&&S.turn,humanTurn:S&&S.human_turn,challenge:S&&S.challenge}));if(S&&S.game_over&&body.action!=='new_game')return;if(requestInFlight)return;requestInFlight=true;try{if(body.action==='new_game'||body.action==='skill'){clearTimeout(botTimer);botTimer=null}let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d=await r.json();console.log('[DragonIsles response]',JSON.stringify({action:body.action,ok:r.ok,status:r.status,error:r.ok?null:d.error}));if(!r.ok){let boatText=body.action==='boat_answer'?body.text:null;await get();if(boatText!==null){let input=document.getElementById('boat-answer');if(input)input.value=boatText}alert(d.error);return}if(body.action==='discard')discardPicks=[];selected=null;method=null;cards=[];rerollPicks=[];discardPicks=[];S=d;stateRevision++;render()}finally{requestInFlight=false}}
 function esc(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 function encounterHtml(){return S.encounters.map((c,i)=>`<div class="card encounter ${selected===c.id?'selected':''}"${S.game_over?'':` onclick="pick('${c.id}')"`}><b>${i+1}. ${esc(c.name)}</b> <span class="${c.sea?'sea':'land'}">${c.sea?'SEA':'LAND'}</span><br>${esc(c.type)} · ${c.vp} VP · ${c.icons} icon(s)<br><span class="muted">${esc(c.mechanics)}</span></div>`).join('')}

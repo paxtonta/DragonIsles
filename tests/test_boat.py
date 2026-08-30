@@ -3,7 +3,12 @@ from datetime import date, timedelta
 
 import pytest
 
-from dragonisles.boat import BoatAnswer, parse_boat_answer, resolve_first_seat
+from dragonisles.boat import (
+    CHILDHOOD_FOLLOWUP,
+    BoatAnswer,
+    parse_boat_answer,
+    resolve_first_seat,
+)
 
 
 TODAY = date(2026, 8, 10)
@@ -83,6 +88,20 @@ def test_parse_boat_answer_sanitizes_text():
     answer = parse_boat_answer("  two\tweeks\nago  ", TODAY)
     assert answer.raw == "two weeks ago"
     assert answer.tier == 3
+
+
+def test_childhood_answers_request_a_years_followup():
+    for text in ("childhood", "as a kid", "when i was a kid", "as a child"):
+        answer = parse_boat_answer(text, TODAY)
+        assert answer.tier == 0
+        assert answer.date is None
+        assert answer.followup == CHILDHOOD_FOLLOWUP
+
+
+def test_other_unreadable_answers_have_no_followup():
+    answer = parse_boat_answer("gibberish", TODAY)
+    assert answer.tier == 0
+    assert answer.followup is None
 
 
 def test_two_years_ago_is_a_numeric_date():

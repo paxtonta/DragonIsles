@@ -8,11 +8,18 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 
+CHILDHOOD_FOLLOWUP = (
+    'Roughly how many years ago was that? Give a number of years, '
+    'e.g. "20 years ago".'
+)
+
+
 @dataclass(frozen=True)
 class BoatAnswer:
     raw: str
     tier: int  # 3 dated, 1 never, 0 unreadable
     date: date | None
+    followup: str | None = None
 
 
 _MONTHS = {
@@ -227,6 +234,17 @@ def parse_boat_answer(text: str, today: date) -> BoatAnswer:
         "n/a",
     }:
         return BoatAnswer(raw, 1, None)
+
+    if any(
+        phrase in normalized
+        for phrase in (
+            "childhood",
+            "as a kid",
+            "when i was a kid",
+            "as a child",
+        )
+    ):
+        return BoatAnswer(raw, 0, None, CHILDHOOD_FOLLOWUP)
 
     return BoatAnswer(raw, 0, None)
 

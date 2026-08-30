@@ -2,12 +2,20 @@
 
 cd "$(dirname "$0")" || exit 1
 
+# shellcheck source=update-dragonisles.sh
+. ./update-dragonisles.sh
+
 pause_and_exit() {
     echo "$1"
     read -n 1 -r -p "Press any key to close this window..."
     echo
     exit 1
 }
+
+dragonisles_self_update
+if [ "${DRAGONISLES_REEXEC:-}" = 1 ]; then
+    exec "$0" "$@"
+fi
 
 if ! command -v python3 >/dev/null 2>&1; then
     pause_and_exit "Python 3 is required to play DragonIsles, but it was not found."

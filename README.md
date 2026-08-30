@@ -34,5 +34,7 @@ Use Terminal to avoid the macOS block:
 cd ~/dragonisles-bot
 ./"Play DragonIsles.command"
 ```
+These launchers update themselves from GitHub each time they start.
+Set `DRAGONISLES_NO_UPDATE=1` to skip the update check.
 Double-click `Play with a friend.command` to start a private Cloudflare quick tunnel.
 Send your friend the displayed link and passphrase.

@@ -18,3 +18,7 @@ Every time:
 ```
 
 Then open http://127.0.0.1:8190 in a browser. Press Ctrl+C in the Terminal to stop.
+
+## Easiest way to play
+
+Double-click `Play DragonIsles.command`. If macOS blocks it as unidentified, right-click it and choose **Open**.

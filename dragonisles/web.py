@@ -1223,7 +1223,7 @@ function render(){
   clearTimeout(botTimer);
   botTimer=setTimeout(()=>{if(revision===stateRevision)post('/api/action',{action:'continue_bot',revision:serverRevision})},2000);
  }else{clearTimeout(botTimer);botTimer=null}
- refreshMethods()}
+ if(selected&&!S.boat&&!S.first_turn&&(S.mode!=='versus'||S.human_turn))refreshMethods()}
 
 function coinPercentage(p){return p.score?p.coin_points/p.score:0}
 function gameOverHtml(){if(!S.game_over)return '';

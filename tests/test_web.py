@@ -439,6 +439,22 @@ def test_web_options_uses_engine_legality_and_blocking():
     )
 
 
+def test_web_options_enables_strike_for_same_suit_cards():
+    session = _ready_bot_session()
+    session.human.hand[:3] = [
+        Card("red", 3),
+        Card("red", 4),
+        Card("red", 6),
+    ]
+    encounter = session.state()["encounters"][0]
+
+    options = session.options(
+        {"encounter": encounter["id"], "cards": [0, 1, 2]}
+    )
+
+    assert options["strike"] == {"enabled": True, "reason": ""}
+
+
 def _force_human_turn(session):
     state = session.game.state
     state.current_player = state.players.index(session.human)
@@ -984,6 +1000,16 @@ def test_web_hides_bot_panel_and_turn_line_while_first_turn_is_pending():
     assert "S.first_turn?'':`<b>Turn ${S.turn}</b>" in HTML
     assert "S.mode==='bot'&&!S.first_turn&&S.discard" in HTML
     assert "S.mode==='bot'&&!S.first_turn&&S.challenge" in HTML
+
+
+def test_web_refreshes_method_buttons_after_render():
+    assert (
+        "if(selected&&!S.boat&&!S.first_turn&&(S.mode!=='versus'||S.human_turn))"
+        "refreshMethods()}"
+        in HTML
+    )
+    assert "if(method&&!o[method].enabled)method=null;" in HTML
+    assert "syncChallengeButton(!!method)" in HTML
 
 
 def test_web_time_boat_prompt_uses_same_input_and_action():

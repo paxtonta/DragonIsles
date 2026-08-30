@@ -23,7 +23,7 @@ from .bot import Decision
 from .cards import Card
 from .cli import _encounter_mechanics
 from .combos import is_legal, is_legal_reason
-from .characters import CHARACTERS, SKILL_TRACKS, TrackStep, available_tracks
+from .characters import ABILITIES, CHARACTERS, SKILL_TRACKS, TrackStep, available_tracks
 from .encounters import Encounter, load_encounters
 from .engine import ChallengeProgress, Game, GameInteraction, Player
 from .persistence import load as load_state
@@ -936,6 +936,7 @@ def serialize_player(player: Player, *, reveal_potions: bool = False) -> dict[st
     return {
         "name": player.name,
         "character": player.character.name,
+        "ability": ABILITIES.get(player.character.name, ""),
         "is_bot": player.is_bot,
         "encounters": [
             {"name": card.name, "vp": card.victory_points, "icons": card.icons}
@@ -1074,7 +1075,7 @@ function render(){
  if(S.mode==='versus'&&!S.human_turn)actionDisabled=' disabled';
  if(selected&&!S.encounters.some(c=>c.id===selected)){selected=null;method=null}
  let methods=S.game_over?'Game over':selected?['sneak','steal','strike'].map(m=>`<button id="method-${m}"${actionDisabled} onclick="chooseMethod('${m}')" disabled>${m}</button>`).join(''):'Select an encounter first';
- let players=S.players.map(p=>{let potions=Array.isArray(p.potions)?esc(p.potions.join(', ')||'none'):p.potions;return `<div class=panel><b>${esc(p.name)} (${esc(p.character)})</b>${p.score===undefined?'':`<br>Score: ${p.score} VP`}<br>Hand: ${p.hand_count} · Hand limit: ${p.hand_limit} · Coins: ${p.coins} · Potions: ${potions}<br>Skills: ${esc(JSON.stringify(p.skills))}<br>Completed: ${esc(completedText(p)||'none')}<br>Treasures: ${p.treasures.length?p.treasures.map(treasureHtml).join(', '):'none'}</div>`}).join('');
+ let players=S.players.map(p=>{let potions=Array.isArray(p.potions)?esc(p.potions.join(', ')||'none'):p.potions;return `<div class=panel><b>${esc(p.name)} (${esc(p.character)})</b><br><span class=muted>${esc(p.ability)}</span>${p.score===undefined?'':`<br>Score: ${p.score} VP`}<br>Hand: ${p.hand_count} · Hand limit: ${p.hand_limit} · Coins: ${p.coins} · Potions: ${potions}<br>Skills: ${esc(JSON.stringify(p.skills))}<br>Completed: ${esc(completedText(p)||'none')}<br>Treasures: ${p.treasures.length?p.treasures.map(treasureHtml).join(', '):'none'}</div>`}).join('');
  let discardTop=S.discard_top?cardHtml(S.discard_top):'none';
  let market=S.market.map(cardHtml).join(', ');
  let tokens=S.tokens?`<div class=panel><b>Token supply</b><br>Potions left: ${S.tokens.potions} · Coins left: ${S.tokens.coins.map(c=>c[1]+'×'+c[0]).join(', ')}</div>`:'';

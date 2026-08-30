@@ -10,7 +10,7 @@ import pytest
 
 from dragonisles.bot import Decision
 from dragonisles.cards import Card
-from dragonisles.characters import CHARACTERS, SKILL_TRACKS
+from dragonisles.characters import ABILITIES, CHARACTERS, SKILL_TRACKS
 from dragonisles.encounters import Encounter, load_encounters
 from dragonisles.engine import ChallengeProgress, Player
 from dragonisles.potions import DRAW_TWO, PLUS_TWO, PotionToken
@@ -106,6 +106,11 @@ def test_web_state_exposes_board_and_public_state():
     assert len(state["hand"]) >= 2
     assert len(state["players"]) == 2
     assert all("score" in player for player in state["players"])
+    assert [
+        player["ability"] for player in state["players"]
+    ] == [
+        ABILITIES[player.character.name] for player in session.game.state.players
+    ]
     assert all(
         player["hand_limit"]
         == next(
@@ -116,6 +121,10 @@ def test_web_state_exposes_board_and_public_state():
         for player in state["players"]
     )
     assert set(state["trophies"]) >= {"dragon", "oni", "all"}
+
+
+def test_player_panels_render_character_abilities():
+    assert "esc(p.ability)" in HTML
 
 
 def test_web_new_game_button_resets_the_session():

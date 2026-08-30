@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import hmac
+import os
+import random
+import secrets
 import threading
 from argparse import ArgumentParser
 from collections.abc import Sequence
+from http.cookies import SimpleCookie
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,7 +21,7 @@ from .bot import Decision
 from .cards import Card
 from .cli import _encounter_mechanics
 from .combos import is_legal, is_legal_reason
-from .characters import SKILL_TRACKS, TrackStep, available_tracks
+from .characters import CHARACTERS, SKILL_TRACKS, TrackStep, available_tracks
 from .encounters import Encounter, load_encounters
 from .engine import ChallengeProgress, Game, GameInteraction, Player
 from .potions import PLUS_TWO
@@ -30,44 +35,63 @@ ROOT = Path(__file__).parent.parent
 class WebSession:
     """Owns one browser game's mutable state and serializes its requests."""
 
-    def __init__(self) -> None:
+    def __init__(self, mode: str = "bot") -> None:
+        if mode not in {"bot", "versus"}:
+            raise ValueError("mode must be bot or versus")
         self.lock = threading.RLock()
+        self.mode = mode
         self._reset()
 
     def _reset(self) -> None:
         """Deal a new game whose engine callbacks belong to this session."""
         self.events: list[str] = []
         encounters = load_encounters(ROOT / "data" / "encounters.json")
-        self.game = Game(
-            encounters,
-            interaction=GameInteraction(
-                choose_discards=self._choose_discards,
-                choose_treasure=self._defer_treasure,
-                choose_treasure_card=self._defer_treasure_card,
-                choose_track=self._choose_track,
-                choose_plus_two=self._choose_plus_two,
-                choose_rerolls=self._choose_rerolls,
-                stage_bot_discards=True,
-                show_roll=self._show_roll,
-                show_challenge_result=self._show_result,
-                announce=self.events.append,
-            ),
+        interaction = GameInteraction(
+            choose_discards=self._choose_discards,
+            choose_treasure=self._defer_treasure,
+            choose_treasure_card=self._defer_treasure_card,
+            choose_track=self._choose_track,
+            choose_plus_two=self._choose_plus_two,
+            choose_rerolls=self._choose_rerolls,
+            stage_bot_discards=True,
+            show_roll=self._show_roll,
+            show_challenge_result=self._show_result,
+            announce=self.events.append,
         )
+        if self.mode == "versus":
+            rng = random.Random()
+            characters = rng.sample(list(CHARACTERS.values()), 2)
+            players = [
+                Player("Player 1", characters[0]),
+                Player("Player 2", characters[1]),
+            ]
+            self.game = Game(encounters, rng=rng, players=players, interaction=interaction)
+        else:
+            self.game = Game(encounters, interaction=interaction)
         self.pending: dict[str, Any] = {}
         self.pending_challenge: ChallengeProgress | None = None
         self.pending_skill_tracks: tuple[str, ...] | None = None
         self.pending_prepare: dict[str, Any] | None = None
         self.pending_bot_prepare: dict[str, Any] | None = None
-        self.pending_free_action_discard = False
+        self.pending_free_action_discard: Player | None = None
         self.revision = 0
         self._run_bots()
 
-    def new_game(self) -> None:
+    def new_game(self, mode: str | None = None) -> None:
+        if mode is not None:
+            if mode not in {"bot", "versus"}:
+                raise ValueError("mode must be bot or versus")
+            self.mode = mode
         self._reset()
 
     @property
     def human(self) -> Player:
         return self.game.state.players[0]
+
+    def player_for_seat(self, seat: int) -> Player:
+        if seat not in (0, 1):
+            raise ValueError("seat must be 0 or 1")
+        return self.game.state.players[seat]
 
     def _choose_discards(self, player: Player, count: int) -> None:
         """Stage the hand-limit choice for the browser."""
@@ -166,20 +190,25 @@ class WebSession:
         self._finish_turn()
         self._run_bots()
 
-    def action(self, payload: dict[str, Any]) -> None:
+    def action(self, payload: dict[str, Any], seat: int = 0) -> None:
         with self.lock:
+            player = self.player_for_seat(seat)
             action = payload.get("action")
             if action == "new_game":
-                self.new_game()
+                self.new_game(payload.get("mode"))
                 return
             if self.game.state.game_over:
                 raise ValueError("the game is over")
             if action == "continue_bot":
+                if self.mode != "bot":
+                    raise ValueError("bot actions are unavailable in versus mode")
                 if "revision" in payload and payload["revision"] != self.revision:
                     raise ValueError("stale bot action")
                 self._resolve_bot_challenge()
                 return
             if action == "continue_bot_discard":
+                if self.mode != "bot":
+                    raise ValueError("bot actions are unavailable in versus mode")
                 if (
                     "revision" in payload
                     and payload["revision"] != self.revision
@@ -189,47 +218,59 @@ class WebSession:
                 return
             if (
                 self.game.state.players[self.game.state.current_player]
-                is not self.human
+                is not player
             ):
-                raise ValueError("it is not the human player's turn")
+                raise ValueError("it is not your turn")
             if action in ("attempt", "prepare_start", "potion"):
                 self.events.clear()
             if action == "prepare_start":
                 self.pending_prepare = {
-                    "remaining": self.game.prepare_draw_count(self.human),
+                    "player": player,
+                    "remaining": self.game.prepare_draw_count(player),
                     "drawn": [],
                 }
                 return
             if action == "prepare_cancel":
                 if self.pending_prepare is None:
                     raise ValueError("prepare has not started")
+                if self.pending_prepare["player"] is not player:
+                    raise ValueError("prepare belongs to the other player")
                 if self.pending_prepare["drawn"]:
                     raise ValueError("prepare cannot be cancelled after a draw")
                 self.pending_prepare = None
                 return
             if action == "prepare_source":
-                self._prepare_source(str(payload["source"]))
+                self._prepare_source(player, str(payload["source"]))
                 return
             if action == "reroll":
                 if self.pending_challenge is None:
                     raise ValueError("no challenge is waiting for rerolls")
+                if self.pending_challenge.player is not player:
+                    raise ValueError("challenge belongs to the other player")
                 self.game.reroll_attempt(
                     self.pending_challenge,
                     [int(index) for index in payload.get("indices", ())],
                 )
                 return
             if action == "resolve":
-                self._resolve_challenge(bool(payload.get("plus_two", False)))
+                if (
+                    self.pending_challenge is None
+                    or self.pending_challenge.player is not player
+                ):
+                    raise ValueError("challenge belongs to the other player")
+                self._resolve_challenge(player, bool(payload.get("plus_two", False)))
                 return
             if action == "use_plus_two":
                 if self.pending_challenge is None:
                     raise ValueError("no challenge is waiting to resolve")
+                if self.pending_challenge.player is not player:
+                    raise ValueError("challenge belongs to the other player")
                 self.game.apply_plus_two(self.pending_challenge)
                 return
             if action == "skill":
                 if self.pending_challenge is None:
                     raise ValueError("no challenge is waiting for a skill choice")
-                if self.pending_challenge.player is not self.human:
+                if self.pending_challenge.player is not player:
                     raise ValueError("skill choice has expired")
                 if (
                     "revision" in payload
@@ -242,7 +283,7 @@ class WebSession:
                 ):
                     raise ValueError("resolve the pending treasure choice first")
                 track = payload.get("track")
-                known_tracks = SKILL_TRACKS.get(self.human.character.name, {})
+                known_tracks = SKILL_TRACKS.get(player.character.name, {})
                 if not isinstance(track, str):
                     raise ValueError("invalid skill track selection")
                 tracks = self.pending_skill_tracks
@@ -251,7 +292,7 @@ class WebSession:
                         raise ValueError("invalid skill track selection")
                     tracks = tuple(
                         available_tracks(
-                            self.human.character, self.human.skill_levels
+                            player.character, player.skill_levels
                         )
                     )
                 if track not in tracks:
@@ -260,7 +301,7 @@ class WebSession:
                     raise ValueError("skill track is maxed")
                 self.pending["track"] = track
                 try:
-                    self.game.complete_experience(self.human)
+                    self.game.complete_experience(player)
                 finally:
                     self.pending["track"] = None
                 self.pending_challenge = None
@@ -271,6 +312,8 @@ class WebSession:
                 pending = self.game.pending_trader_draw
                 if pending is None:
                     raise ValueError("no Trader draw is waiting for a card")
+                if pending.player is not player:
+                    raise ValueError("treasure choice belongs to the other player")
                 self.game.resolve_trader_draw(pending.cards[int(payload["card"])])
                 self._advance()
                 return
@@ -278,6 +321,8 @@ class WebSession:
                 pending = self.game.pending_treasure_draw
                 if pending is None:
                     raise ValueError("no treasure choice is waiting")
+                if pending.player is not player:
+                    raise ValueError("treasure choice belongs to the other player")
                 self.game.resolve_treasure_draw(
                     pending.treasures[int(payload["treasure"])]
                 )
@@ -287,8 +332,8 @@ class WebSession:
                 pending = self.game.pending_discard
                 if pending is None:
                     raise ValueError("no discard choice is waiting")
-                if pending.player is not self.human:
-                    raise ValueError("the bot's discard is automatic")
+                if pending.player is not player:
+                    raise ValueError("discard belongs to the other player")
                 indexes = [int(index) for index in payload.get("cards", ())]
                 if len(indexes) != 1:
                     raise ValueError("select exactly one card")
@@ -296,11 +341,11 @@ class WebSession:
                 if self.game.pending_discard is None:
                     if self.pending_prepare is not None:
                         if self.pending_prepare["remaining"] == 0:
-                            self.game.finish_prepare(self.human)
+                            self.game.finish_prepare(player)
                             self.pending_prepare = None
                             self._advance()
-                    elif self.pending_free_action_discard:
-                        self.pending_free_action_discard = False
+                    elif self.pending_free_action_discard is player:
+                        self.pending_free_action_discard = None
                     else:
                         self._advance()
                 return
@@ -308,21 +353,21 @@ class WebSession:
                 raise ValueError("prepare_source is required for each draw")
             elif action == "potion":
                 potion_index = int(payload["potion"])
-                self.game.use_potion(self.human, self.human.potions[potion_index])
+                self.game.use_potion(player, player.potions[potion_index])
                 self.pending_free_action_discard = (
-                    self.game.pending_discard is not None
+                    player if self.game.pending_discard is not None else None
                 )
                 return
             elif action == "attempt":
                 encounter = self._encounter(payload["encounter"])
                 method = str(payload["method"])
                 indexes = [int(index) for index in payload.get("cards", ())]
-                combo = tuple(self.human.hand[index] for index in indexes)
+                combo = tuple(player.hand[index] for index in indexes)
                 if not is_legal(combo, method):
                     raise ValueError("selected cards do not form a legal combination")
                 self.pending_skill_tracks = None
                 self.pending_challenge = self.game.begin_attempt(
-                    self.human,
+                    player,
                     encounter,
                     Decision("attempt", encounter, combo, method),
                 )
@@ -330,16 +375,18 @@ class WebSession:
             else:
                 raise ValueError("unknown action")
 
-    def _prepare_source(self, source: str) -> None:
+    def _prepare_source(self, player: Player, source: str) -> None:
         if self.pending_prepare is None:
             raise ValueError("prepare has not started")
+        if self.pending_prepare["player"] is not player:
+            raise ValueError("prepare belongs to the other player")
         if self.game.pending_discard is not None:
             raise ValueError("discard choice is waiting")
         if source == "deck":
-            card = self.game.prepare_one(self.human, "deck")
+            card = self.game.prepare_one(player, "deck")
         elif source.startswith("market:"):
             index = int(source.split(":", 1)[1])
-            card = self.game.prepare_one(self.human, self.game.state.market[index])
+            card = self.game.prepare_one(player, self.game.state.market[index])
         else:
             raise ValueError("source must be deck or market:<index>")
         self.pending_prepare["drawn"].append(serialize_card(card, -1))
@@ -347,33 +394,35 @@ class WebSession:
         if self.game.pending_discard is not None:
             return
         if self.pending_prepare["remaining"] == 0:
-            self.game.finish_prepare(self.human)
+            self.game.finish_prepare(player)
             self.pending_prepare = None
             self._advance()
 
-    def _resolve_challenge(self, use_plus_two: bool) -> None:
+    def _resolve_challenge(self, player: Player, use_plus_two: bool) -> None:
         if self.pending_challenge is None:
             raise ValueError("no challenge is waiting to resolve")
+        if self.pending_challenge.player is not player:
+            raise ValueError("challenge belongs to the other player")
         success = self.game.resolve_attempt(
             self.pending_challenge,
             use_plus_two=use_plus_two,
             advance_experience=False,
         )
-        ending = success and len(self.human.encounters) >= 8
+        ending = success and len(player.encounters) >= 8
         if (
             success
-            and available_tracks(self.human.character, self.human.skill_levels)
+            and available_tracks(player.character, player.skill_levels)
             and not ending
         ):
             self.pending_skill_tracks = tuple(
-                available_tracks(self.human.character, self.human.skill_levels)
+                available_tracks(player.character, player.skill_levels)
             )
             return
         self.pending_challenge = None
         self.pending_skill_tracks = None
         try:
             if success:
-                self.game.complete_experience(self.human)
+                self.game.complete_experience(player)
         finally:
             self._advance()
 
@@ -425,11 +474,14 @@ class WebSession:
         self._finish_turn()
         self._run_bots()
 
-    def options(self, payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    def options(
+        self, payload: dict[str, Any], seat: int = 0
+    ) -> dict[str, dict[str, Any]]:
         with self.lock:
+            player = self.player_for_seat(seat)
             encounter = self._encounter(payload["encounter"])
             indexes = [int(index) for index in payload.get("cards", ())]
-            combo = tuple(self.human.hand[index] for index in indexes)
+            combo = tuple(player.hand[index] for index in indexes)
             result: dict[str, dict[str, Any]] = {}
             for method in ("sneak", "steal", "strike"):
                 if method == encounter.blocked_method:
@@ -450,37 +502,78 @@ class WebSession:
             if encounter.id == encounter_id
         )
 
-    def state(self) -> dict[str, Any]:
+    def state(self, seat: int = 0) -> dict[str, Any]:
         with self.lock:
+            player = self.player_for_seat(seat)
+            opponent = self.game.state.players[1 - seat]
             players = []
-            for player in self.game.state.players:
+            for listed_player in self.game.state.players:
                 serialized = serialize_player(
-                    player, reveal_potions=player is self.human
+                    listed_player, reveal_potions=listed_player is player
                 )
-                serialized["score"] = self.game.score(player).total
-                serialized["coin_points"] = self.game.score(player).coin_points
+                serialized["score"] = self.game.score(listed_player).total
+                serialized["coin_points"] = self.game.score(listed_player).coin_points
                 players.append(serialized)
             holders, all_holders = trophy_holders(
                 self.game.state.trophy_events,
                 player_count=len(self.game.state.players),
             )
+            challenge = self.pending_challenge
+            if (
+                challenge is not None
+                and self.mode == "versus"
+                and challenge.player is not player
+            ):
+                challenge = None
+            prepare = self.pending_prepare
+            if (
+                prepare is not None
+                and self.mode == "versus"
+                and prepare["player"] is not player
+            ):
+                prepare = None
+            trader = self.game.pending_trader_draw
+            if (
+                trader is not None
+                and self.mode == "versus"
+                and trader.player is not player
+            ):
+                trader = None
+            treasure = self.game.pending_treasure_draw
+            if (
+                treasure is not None
+                and self.mode == "versus"
+                and treasure.player is not player
+            ):
+                treasure = None
+            discard = self.game.pending_discard
+            if (
+                discard is not None
+                and self.mode == "versus"
+                and discard.player is not player
+            ):
+                discard = None
             return {
-        "turn": self.game.state.turn_number,
-        "revision": self.revision,
-        "human_turn": self.game.state.players[self.game.state.current_player]
-                is self.human,
+                "turn": self.game.state.turn_number,
+                "revision": self.revision,
+                "mode": self.mode,
+                "seat": seat,
+                "seat_name": player.name,
+                "opponent_name": opponent.name,
+                "human_turn": self.game.state.players[self.game.state.current_player]
+                is player,
                 "die_faces": list(self.game.rules.die_faces),
                 "game_over": self.game.state.game_over,
                 "events": self.events[-12:],
                 "prepare": (
                     None
-                    if self.pending_prepare is None
+                    if prepare is None
                     else {
-                        "remaining": self.pending_prepare["remaining"],
-                        "drawn": list(self.pending_prepare["drawn"]),
+                        "remaining": prepare["remaining"],
+                        "drawn": list(prepare["drawn"]),
                     }
                 ),
-                "challenge": serialize_challenge(self.pending_challenge),
+                "challenge": serialize_challenge(challenge),
                 "discard_top": (
                     serialize_card(self.game.state.deck.discard_pile[-1], -1)
                     if self.game.state.deck.discard_pile
@@ -488,33 +581,33 @@ class WebSession:
                 ),
                 "trader": (
                     None
-                    if self.game.pending_trader_draw is None
+                    if trader is None
                     else {
                         "cards": [
                             serialize_card(card, index)
                             for index, card in enumerate(
-                                self.game.pending_trader_draw.cards
+                                trader.cards
                             )
                         ]
                     }
                 ),
                 "treasure": (
                     None
-                    if self.game.pending_treasure_draw is None
+                    if treasure is None
                     else {
                         "treasures": [
                             serialize_treasure(treasure)
-                            for treasure in self.game.pending_treasure_draw.treasures
+                            for treasure in treasure.treasures
                         ]
                     }
                 ),
                 "discard": (
                     None
-                    if self.game.pending_discard is None
-                    else {"count": self.game.pending_discard.count}
+                    if discard is None
+                    else {"count": discard.count}
                     | {
-                        "player": self.game.pending_discard.player.name,
-                        "player_is_bot": self.game.pending_discard.player.is_bot,
+                        "player": discard.player.name,
+                        "player_is_bot": discard.player.is_bot,
                     }
                 ),
                 "tokens": {
@@ -526,7 +619,7 @@ class WebSession:
                 ],
                 "hand": [
                     serialize_card(card, index)
-                    for index, card in enumerate(self.human.hand)
+                    for index, card in enumerate(player.hand)
                 ],
                 "players": players,
                 "market": [
@@ -534,9 +627,9 @@ class WebSession:
                     for index, card in enumerate(self.game.state.market)
                 ],
                 "tracks": list(
-                    available_tracks(self.human.character, self.human.skill_levels)
+                    available_tracks(player.character, player.skill_levels)
                 ),
-                "ladders": serialize_ladders(self.human),
+                "ladders": serialize_ladders(player),
                 "trophies": {
                     kind: (
                         self.game.state.players[index].name
@@ -693,7 +786,7 @@ button.secondary{background:#4d6180;color:#e8eef7}.gap{display:inline-block;widt
 pre{white-space:pre-wrap}.events{max-height:180px;overflow:auto}
 @media(max-width:800px){.grid{grid-template-columns:1fr}.encounters{grid-template-columns:1fr}}
 </style></head>
-<body><main><h1>DragonIsles <button class=secondary id=theme-toggle onclick="toggleTheme()">Use light mode</button> <button class=secondary type=button onclick="newGame()">New game</button></h1><div id="app">Loading…</div></main>
+<body><main><h1>DragonIsles <button class=secondary id=theme-toggle onclick="toggleTheme()">Use light mode</button> <button class=secondary type=button onclick="newGame('bot')">New game (vs Bot)</button> <button class=secondary type=button onclick="newGame('versus')">New game (vs Friend)</button></h1><div id="app">Loading…</div></main>
 <script>
 let S=null, selected=null, method=null, cards=[], rerollPicks=[], discardPicks=[], botTimer=null, requestInFlight=false, stateRevision=0, stateRequest=0;
 document.addEventListener('click',e=>{
@@ -706,7 +799,7 @@ document.addEventListener('click',e=>{
 });
 function setTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('dragonisles-theme',theme);document.getElementById('theme-toggle').textContent=theme==='dark'?'Use light mode':'Use dark mode'}
 function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
-function newGame(){post('/api/action',{action:'new_game'})}
+function newGame(mode){post('/api/action',{action:'new_game',mode})}
 async function get(){let request=++stateRequest;let next=await (await fetch('/api/state')).json();if(request!==stateRequest)return;S=next;stateRevision++;render()}
 async function post(path,body){if(body.action==='skill'&&S)body.revision=S.revision;console.log('[DragonIsles action]',JSON.stringify({path:path,body:body,stateRevision:stateRevision,turn:S&&S.turn,humanTurn:S&&S.human_turn,challenge:S&&S.challenge}));if(S&&S.game_over&&body.action!=='new_game')return;if(requestInFlight)return;requestInFlight=true;try{if(body.action==='new_game'||body.action==='skill'){clearTimeout(botTimer);botTimer=null}let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d=await r.json();console.log('[DragonIsles response]',JSON.stringify({action:body.action,ok:r.ok,status:r.status,error:r.ok?null:d.error}));if(!r.ok){await get();alert(d.error);return}if(body.action==='discard')discardPicks=[];selected=null;method=null;cards=[];rerollPicks=[];discardPicks=[];S=d;stateRevision++;render()}finally{requestInFlight=false}}
 function esc(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -715,7 +808,7 @@ function encounterHtml(){return S.encounters.map((c,i)=>`<div class="card encoun
 
 function cardHtml(c){return `<span class="adventure-card ${c.suit?'suit-'+c.suit:''}">${esc(c.label)}</span>`}
 function treasureHtml(t){return `<span class="treasure-card treasure-${esc(t.color)}" title="${esc(t.description)}">${esc(t.label)}</span>`}
-function handHtml(){return S.hand.map(c=>`<label><input type=checkbox ${cards.includes(c.index)?'checked':''} ${S.game_over?'disabled':''} value=${c.index} onchange="toggleCard(${c.index})"> ${cardHtml(c)}</label>`).join('')}
+function handHtml(){let disabled=S.game_over||(!S.human_turn&&S.mode==='versus')?'disabled':'';return S.hand.map(c=>`<label><input type=checkbox ${cards.includes(c.index)?'checked':''} ${disabled} value=${c.index} onchange="toggleCard(${c.index})"> ${cardHtml(c)}</label>`).join('')}
 
 function challengeHtml(){let c=S.challenge;if(S.game_over||!c)return '';
  let dice=c.rolls.map((r,i)=>`<span class="die ${rerollPicks.includes(i)?'picked':''}" onclick="toggleDie(${i})">${r}</span>`).join('');
@@ -748,15 +841,16 @@ function discardHtml(){let d=S.discard;if(S.game_over||!d)return '';
  let picks=S.hand.map(c=>`<label><input type=checkbox ${discardPicks.includes(c.index)?'checked':''} onchange="toggleDiscard(${c.index})"> ${cardHtml(c)}</label>`).join('');
  return `<div class=panel><b>Choose discard</b> — select one card (${d.count} remaining):<br><div class=hand>${picks}</div><button onclick="post('/api/action',{action:'discard',cards:discardPicks})" ${discardPicks.length!==1?'disabled':''}>Discard selected</button></div>`}
 
-function potionStatusHtml(){let me=S.players[0];let kinds=me.potions.length?me.potions.join(', '):'none';
+function potionStatusHtml(){let me=S.players[S.seat];let kinds=me.potions.length?me.potions.join(', '):'none';
  return `<span class=muted>Potions: ${esc(kinds)}. +2 available: ${me.potions.includes('+2')?'yes':'no'}.</span>`}
-function potionHtml(){let me=S.players[0];if(S.game_over||!me.potions.length)return '';
+function potionHtml(){let me=S.players[S.seat];if(S.game_over||!S.human_turn||!me.potions.length)return '';
  let buttons=me.potions.map((k,i)=>k==='+2'?'':`<button onclick="post('/api/action',{action:'potion',potion:${i}})">Use ${esc(k)}</button>`).join('');
  return `<div class=panel><b>Potion effects</b> — +2 adds 2 during a Challenge; Draw 2 draws two cards; Purge draws 1 card and redeals the Encounter row.<br>${buttons}</div>`}
 
 function render(){
  let busy=S.challenge||S.prepare||S.treasure||S.trader||S.discard;
  let actionDisabled=S.game_over?' disabled':'';
+ if(S.mode==='versus'&&!S.human_turn)actionDisabled=' disabled';
  if(selected&&!S.encounters.some(c=>c.id===selected)){selected=null;method=null}
  let methods=S.game_over?'Game over':selected?['sneak','steal','strike'].map(m=>`<button id="method-${m}"${actionDisabled} onclick="chooseMethod('${m}')" disabled>${m}</button>`).join(''):'Select an encounter first';
  let players=S.players.map(p=>{let potions=Array.isArray(p.potions)?esc(p.potions.join(', ')||'none'):p.potions;return `<div class=panel><b>${esc(p.name)} (${esc(p.character)})</b>${p.score===undefined?'':`<br>Score: ${p.score} VP`}<br>Hand: ${p.hand_count} · Hand limit: ${p.hand_limit} · Coins: ${p.coins} · Potions: ${potions}<br>Skills: ${esc(JSON.stringify(p.skills))}<br>Completed: ${esc(completedText(p)||'none')}<br>Treasures: ${p.treasures.length?p.treasures.map(treasureHtml).join(', '):'none'}</div>`}).join('');
@@ -764,7 +858,8 @@ function render(){
  let market=S.market.map(cardHtml).join(', ');
  let tokens=S.tokens?`<div class=panel><b>Token supply</b><br>Potions left: ${S.tokens.potions} · Coins left: ${S.tokens.coins.map(c=>c[1]+'×'+c[0]).join(', ')}</div>`:'';
  document.getElementById('app').innerHTML=`<div class=grid><section>
- <div class=panel><b>Turn ${S.turn}</b> — ${S.game_over?'Game over':(S.human_turn?'Your turn':'Bot turn')}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ <div class=panel><b>Turn ${S.turn}</b> — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}<br><span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ ${S.mode==='versus'&&!S.human_turn?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
  ${gameOverHtml()}
  <h2>Encounters</h2><div class=encounters>${encounterHtml()}</div>
  ${challengeHtml()}${treasureChoiceHtml()}${traderHtml()}${discardHtml()}${prepareHtml()}
@@ -774,11 +869,11 @@ function render(){
  <div class=panel><b>Skill ladders</b><br>${ladderHtml()}</div>
  <div class=panel><b>Events</b><pre class=events>${esc(S.events.join('\n'))}</pre></div>
  </section><aside><h2>Public state</h2>${players}<div class=panel><b>Tavern</b>: ${market}</div><div class=panel><b>Discard pile top</b>: ${discardTop}</div>${tokens}</aside></div>`;
- if(S.discard&&S.discard.player_is_bot){
+ if(S.mode==='bot'&&S.discard&&S.discard.player_is_bot){
   let revision=stateRevision,serverRevision=S.revision;
   clearTimeout(botTimer);
   botTimer=setTimeout(()=>{if(revision===stateRevision)post('/api/action',{action:'continue_bot_discard',revision:serverRevision})},2000);
- }else if(S.challenge&&S.challenge.player_is_bot){
+ }else if(S.mode==='bot'&&S.challenge&&S.challenge.player_is_bot){
   let revision=stateRevision,serverRevision=S.revision;
   clearTimeout(botTimer);
   botTimer=setTimeout(()=>{if(revision===stateRevision)post('/api/action',{action:'continue_bot',revision:serverRevision})},2000);
@@ -796,41 +891,97 @@ function ladderHtml(){return Object.entries(S.ladders).map(([track,l])=>{
  let steps=l.steps.map((s,i)=>`<span class="step ${s.reached?'reached':''}">${i+1}. +${s.bonus}${s.reward?' &rarr; '+esc(s.reward):''}</span>`).join('');
  return `<div class=ladder><b>${esc(track)}</b> <span class=muted>level ${l.level}/${l.steps.length}</span><br>${steps}</div>`}).join('')}
 function completedText(p){return p.encounters.map(c=>c.name).join(', ')}
-function pick(id){selected=id;method=null;render()}
-function chooseMethod(m){method=m;refreshMethods()}
-function syncChallengeButton(enabled){let b=document.getElementById('challenge');if(b)b.disabled=!enabled||!!(S.challenge||S.prepare)}
+function pick(id){if(S.mode==='versus'&&!S.human_turn)return;selected=id;method=null;render()}
+function chooseMethod(m){if(S.mode==='versus'&&!S.human_turn)return;method=m;refreshMethods()}
+function syncChallengeButton(enabled){let b=document.getElementById('challenge');if(b)b.disabled=!enabled||!!(S.challenge||S.prepare)||(!S.human_turn&&S.mode==='versus')}
 function toggleCard(i){cards=cards.includes(i)?cards.filter(x=>x!==i):cards.concat([i]);refreshMethods()}
 function toggleDiscard(i){discardPicks=discardPicks.includes(i)?discardPicks.filter(x=>x!==i):discardPicks.concat([i]);render()}
 function toggleDie(i){let c=S.challenge;if(!c||c.phase!=='reroll')return;
  if(rerollPicks.includes(i))rerollPicks=rerollPicks.filter(x=>x!==i);
  else if(rerollPicks.length<c.reroll_limit)rerollPicks=rerollPicks.concat([i]);
  render()}
-async function refreshMethods(){if(!selected)return;
+async function refreshMethods(){if(!selected||(!S.human_turn&&S.mode==='versus'))return;
  let o=await (await fetch('/api/options',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({encounter:selected,cards})})).json();
  for(let m of ['sneak','steal','strike']){let b=document.getElementById('method-'+m);if(b){b.disabled=!o[m].enabled;b.title=o[m].reason}}
  if(method&&!o[method].enabled)method=null;
  syncChallengeButton(!!method)}
 function attempt(){rerollPicks=[];let payload={action:'attempt',encounter:selected,method,cards};cards=[];post('/api/action',payload)}
-setTheme(localStorage.getItem('dragonisles-theme')||'dark');get();setInterval(()=>{if(!S||(!S.challenge&&!S.prepare&&!S.discard&&!S.treasure&&!S.trader))get()},3000);
+setTheme(localStorage.getItem('dragonisles-theme')||'dark');get();
+setInterval(()=>{if(S&&S.mode==='versus'&&!S.human_turn)get()},2000);
+setInterval(()=>{if(S&&(!S.mode||S.mode==='bot'||S.human_turn)&&!S.challenge&&!S.prepare&&!S.discard&&!S.treasure&&!S.trader)get()},3000);
 </script></body></html>"""
 
 
 SESSION = WebSession()
+PASSPHRASE: str | None = None
+AUTH_SESSIONS: dict[str, int] = {}
 DRAGONISLES_DIR = Path(__file__).parent
+
+LOGIN_HTML = """<!doctype html>
+<html><head><meta charset="utf-8"><title>DragonIsles</title></head>
+<body><main><h1>DragonIsles</h1>
+<p>This private game is for whoever has the link and passphrase.</p>
+<form onsubmit="join(event)">
+<label>Passphrase <input name="passphrase" type="password" autofocus></label>
+<button type="submit">Join game</button>
+</form><p id="error"></p></main>
+<script>
+async function join(event){event.preventDefault();let passphrase=event.target.passphrase.value;
+ let response=await fetch('/api/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase})});
+ if(response.ok)location.href='/';else document.getElementById('error').textContent='Unable to join game.';
+}
+</script></body></html>"""
+
+
+def configure(mode: str, passphrase: str | None) -> None:
+    global PASSPHRASE
+    with SESSION.lock:
+        SESSION.new_game(mode)
+        PASSPHRASE = passphrase
+        AUTH_SESSIONS.clear()
+
+
 class Handler(BaseHTTPRequestHandler):
+    def _cookie_token(self) -> str | None:
+        cookies = SimpleCookie(self.headers.get("Cookie", ""))
+        morsel = cookies.get("dragonisles_session")
+        return morsel.value if morsel is not None else None
+
+    def _seat(self) -> int | None:
+        if PASSPHRASE is None:
+            return 0
+        token = self._cookie_token()
+        if token is None:
+            return None
+        with SESSION.lock:
+            return AUTH_SESSIONS.get(token)
+
+    def _require_seat(self) -> int | None:
+        seat = self._seat()
+        if seat is None:
+            self.send_json({"error": "authentication required"}, HTTPStatus.FORBIDDEN)
+        return seat
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
-        if path == "/api/state":
-            self.send_json(SESSION.state())
-        elif path == "/recording":
+        if path == "/" and self._seat() is None:
+            self.send_html(LOGIN_HTML)
+            return
+        if path.startswith("/api/"):
+            seat = self._require_seat()
+            if seat is None:
+                return
+            if path == "/api/state":
+                self.send_json(SESSION.state(seat))
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if path == "/recording":
             self.send_file(DRAGONISLES_DIR / "recording.html", "text/html")
         elif path == "/gameplay.mp4":
             self.send_file(DRAGONISLES_DIR / "gameplay.mp4", "video/mp4")
         else:
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(HTML.encode())
+            self.send_html(HTML)
 
     def send_file(self, path: Path, content_type: str) -> None:
         if not path.is_file():
@@ -855,12 +1006,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or "{}")
-            if urlparse(self.path).path == "/api/options":
-                body = SESSION.options(payload)
-            elif urlparse(self.path).path == "/api/action":
-                SESSION.action(payload)
+            path = urlparse(self.path).path
+            if path == "/api/join":
+                self._join(payload)
+                return
+            seat = self._require_seat()
+            if seat is None:
+                return
+            if path == "/api/options":
+                body = SESSION.options(payload, seat)
+            elif path == "/api/action":
+                SESSION.action(payload, seat)
+                if payload.get("action") == "new_game":
+                    with SESSION.lock:
+                        if SESSION.mode == "bot":
+                            for token in AUTH_SESSIONS:
+                                AUTH_SESSIONS[token] = 0
                 SESSION.revision += 1
-                body = SESSION.state()
+                body = SESSION.state(seat)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
@@ -868,13 +1031,58 @@ class Handler(BaseHTTPRequestHandler):
         except (KeyError, ValueError, IndexError, StopIteration) as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
+    def _join(self, payload: dict[str, Any]) -> None:
+        if PASSPHRASE is None:
+            self.send_json({"seat": 0})
+            return
+        supplied = payload.get("passphrase", "")
+        if not isinstance(supplied, str) or not hmac.compare_digest(
+            supplied, PASSPHRASE
+        ):
+            self.send_json({"error": "invalid passphrase"}, HTTPStatus.FORBIDDEN)
+            return
+        token = self._cookie_token()
+        with SESSION.lock:
+            seat = AUTH_SESSIONS.get(token) if token is not None else None
+            if seat is None:
+                if SESSION.mode == "versus":
+                    assigned = set(AUTH_SESSIONS.values())
+                    available = next(
+                        (candidate for candidate in (0, 1) if candidate not in assigned),
+                        None,
+                    )
+                    if available is None:
+                        self.send_json(
+                            {"error": "both seats are taken"},
+                            HTTPStatus.FORBIDDEN,
+                        )
+                        return
+                    seat = available
+                else:
+                    seat = 0
+                token = secrets.token_urlsafe(32)
+                AUTH_SESSIONS[token] = seat
+        self.send_json(
+            {"seat": seat},
+            cookie=(
+                "dragonisles_session="
+                f"{token}; HttpOnly; SameSite=Lax; Path=/"
+            ),
+        )
+
     def send_json(
-        self, body: dict[str, Any], status: HTTPStatus = HTTPStatus.OK
+        self,
+        body: dict[str, Any],
+        status: HTTPStatus = HTTPStatus.OK,
+        *,
+        cookie: str | None = None,
     ) -> None:
         data = json.dumps(body).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(data)
 
@@ -884,16 +1092,24 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = ArgumentParser(description="Play DragonIsles in a web browser.")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--port", type=int, default=int(os.environ.get("PORT", "8000"))
+    )
+    parser.add_argument(
+        "--passphrase", default=os.environ.get("DRAGONISLES_PASSPHRASE")
+    )
+    parser.add_argument("--mode", choices=("bot", "versus"), default="bot")
+    parser.add_argument("--host", default="127.0.0.1")
     args = parser.parse_args(argv)
+    configure(args.mode, args.passphrase)
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = ThreadingHTTPServer((args.host, args.port), Handler)
     except OSError as exc:
         raise SystemExit(
             f"Port {args.port} is unavailable ({exc}). "
             f"Try: python3 -m dragonisles.web --port {args.port + 1}"
         ) from exc
-    print(f"DragonIsles web UI: http://127.0.0.1:{args.port}", flush=True)
+    print(f"DragonIsles web UI: http://{args.host}:{args.port}", flush=True)
     server.serve_forever()
 
 

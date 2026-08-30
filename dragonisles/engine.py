@@ -224,8 +224,10 @@ class Game:
         self.pending_treasure_draw: TreasureDraw | None = None
         self.pending_discard: DiscardChoice | None = None
         self._coin_supply = dict(self.rules.coin_token_counts)
-        bot_player = next(player for player in self.state.players if player.is_bot)
-        self.bot_policy = policy_for_character(bot_player.character)
+        bot_player = next((player for player in self.state.players if player.is_bot), None)
+        self.bot_policy = policy_for_character(
+            (bot_player or self.state.players[1]).character
+        )
         for player in self.state.players:
             player.hand.extend(
                 self.state.deck.draw() for _ in range(STARTING_HAND_SIZE)

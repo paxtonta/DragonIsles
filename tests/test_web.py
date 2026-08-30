@@ -1,5 +1,9 @@
+import http.client
+import json
 import random
 import re
+from http.server import ThreadingHTTPServer
+import threading
 from pathlib import Path
 
 import pytest
@@ -13,11 +17,28 @@ from dragonisles.potions import DRAW_TWO, PLUS_TWO, PotionToken
 from dragonisles.treasures import Treasure
 from dragonisles.web import (
     HTML,
+    Handler,
     WebSession,
+    configure,
     serialize_card,
     serialize_ladders,
     serialize_treasure,
 )
+
+
+def _web_request(server, method, path, body=None, cookie=None):
+    connection = http.client.HTTPConnection(*server.server_address)
+    headers = {}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        body = json.dumps(body)
+    if cookie is not None:
+        headers["Cookie"] = cookie
+    connection.request(method, path, body=body, headers=headers)
+    response = connection.getresponse()
+    data = response.read()
+    connection.close()
+    return response.status, response.getheaders(), json.loads(data or b"{}")
 
 
 def _relative_luminance(color):
@@ -973,3 +994,118 @@ def test_staged_and_single_call_challenges_agree_for_the_same_seed():
     assert len(combined_player.hand) == len(staged_player.hand)
     assert len(combined_player.encounters) == len(staged_player.encounters)
     assert len(combined_player.potions) == len(staged_player.potions)
+
+
+def test_versus_game_has_two_human_players_and_seat_state():
+    session = WebSession("versus")
+
+    assert all(not player.is_bot for player in session.game.state.players)
+    state = session.state(1)
+    assert state["mode"] == "versus"
+    assert state["seat"] == 1
+    assert state["seat_name"] == "Player 2"
+    assert state["opponent_name"] == "Player 1"
+    assert state["human_turn"] == (
+        session.game.state.current_player == 1
+    )
+
+
+def test_versus_turn_gating_and_full_turn_handoff():
+    session = WebSession("versus")
+    player_one, player_two = session.game.state.players
+    session.game.state.current_player = 0
+
+    with pytest.raises(ValueError, match="it is not your turn"):
+        session.action({"action": "prepare_start"}, seat=1)
+
+    session.action({"action": "prepare_start"}, seat=0)
+    while session.pending_prepare is not None:
+        session.action({"action": "prepare_source", "source": "deck"}, seat=0)
+        while session.game.pending_discard is not None:
+            session.action(
+                {"action": "discard", "cards": [len(player_one.hand) - 1]},
+                seat=0,
+            )
+
+    assert session.game.state.current_player == 1
+    session.action({"action": "prepare_start"}, seat=1)
+    assert session.pending_prepare["player"] is player_two
+
+    with pytest.raises(ValueError, match="it is not your turn"):
+        session.action({"action": "prepare_source", "source": "deck"}, seat=0)
+
+
+def test_versus_state_hides_opponent_hand_and_potion_kinds():
+    session = WebSession("versus")
+    player_one, player_two = session.game.state.players
+    player_one.hand[:] = [Card("red", 1)]
+    player_two.hand[:] = [Card("blue", 10)]
+    player_one.potions[:] = [PotionToken(PLUS_TWO)]
+    player_two.potions[:] = [PotionToken(DRAW_TWO)]
+
+    state = session.state(0)
+
+    assert [card["rank"] for card in state["hand"]] == [1]
+    assert state["players"][0]["potions"] == [PLUS_TWO]
+    assert state["players"][1]["potions"] == 1
+    assert all(card["rank"] != 10 for card in state["hand"])
+    assert DRAW_TWO not in json.dumps(state)
+
+
+def test_versus_rejects_bot_continuation_actions():
+    session = WebSession("versus")
+
+    for action in ("continue_bot", "continue_bot_discard"):
+        with pytest.raises(ValueError, match="unavailable in versus mode"):
+            session.action({"action": action}, seat=0)
+
+
+def test_passphrase_assigns_two_seats_and_rejects_a_third():
+    configure("versus", "test123")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, _, _ = _web_request(server, "GET", "/api/state")
+        assert status == 403
+
+        status, _, _ = _web_request(
+            server, "POST", "/api/join", {"passphrase": "wrong"}
+        )
+        assert status == 403
+
+        status, headers, body = _web_request(
+            server, "POST", "/api/join", {"passphrase": "test123"}
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+        first_cookie = next(value for key, value in headers if key == "Set-Cookie")
+
+        status, _, body = _web_request(
+            server, "GET", "/api/state", cookie=first_cookie.split(";", 1)[0]
+        )
+        assert status == 200
+        assert body["seat"] == 0
+
+        status, headers, body = _web_request(
+            server, "POST", "/api/join", {"passphrase": "test123"}
+        )
+        assert status == 200
+        assert body == {"seat": 1}
+        second_cookie = next(value for key, value in headers if key == "Set-Cookie")
+
+        status, _, body = _web_request(
+            server, "GET", "/api/state", cookie=second_cookie.split(";", 1)[0]
+        )
+        assert status == 200
+        assert body["seat"] == 1
+
+        status, _, body = _web_request(
+            server, "POST", "/api/join", {"passphrase": "test123"}
+        )
+        assert status == 403
+        assert body == {"error": "both seats are taken"}
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)

@@ -294,7 +294,7 @@ def test_pending_bot_first_turn_round_trips(tmp_path):
     restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
 
     assert restored.state()["first_turn"] == {"pending": True}
-    assert restored.game.state.current_player == 0
+    assert restored.game.state.current_player == loaded[1].state.current_player
 
 
 def test_legacy_bot_save_without_first_turn_loads_as_decided(tmp_path):

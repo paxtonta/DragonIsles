@@ -1242,6 +1242,7 @@ def test_bot_first_turn_choice_can_give_the_bot_the_opening_turn():
 
 
 def test_bot_first_turn_panel_has_only_two_choices_and_versus_keeps_boat_panel():
+    assert "<b>Who goes first?</b>" in HTML
     assert "choice:'me'})" in HTML
     assert "choice:'bot'})" in HTML
     assert "choice:'random'})" not in HTML

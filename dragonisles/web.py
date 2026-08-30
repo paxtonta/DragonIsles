@@ -61,14 +61,6 @@ class WebSession:
     def boat_result(self, value: str | None) -> None:
         self._first_turn_result = value
 
-    @property
-    def boat_decided(self) -> bool:
-        return self.first_turn_decided
-
-    @boat_decided.setter
-    def boat_decided(self, value: bool) -> None:
-        self.first_turn_decided = value
-
     def _interaction(self) -> GameInteraction:
         return GameInteraction(
             choose_discards=self._choose_discards,
@@ -182,7 +174,7 @@ class WebSession:
                 seat: answer.raw for seat, answer in self.boat_answers.items()
             },
             "result": self.boat_result if self.mode == "versus" else None,
-            "decided": self.boat_decided if self.mode == "versus" else True,
+            "decided": self.first_turn_decided if self.mode == "versus" else True,
         }
         first_turn = (
             None
@@ -363,13 +355,12 @@ class WebSession:
                 self.first_turn_decided = True
                 self.events.append(self._first_turn_result)
                 self.revision += 1
-                self._save()
                 self._run_bots()
                 return
             if action == "boat_answer":
                 if self.mode != "versus":
                     raise ValueError("boat question is unavailable in bot mode")
-                if self.boat_decided:
+                if self.first_turn_decided:
                     raise ValueError("the boat question has already been answered")
                 text = _clean_text(payload.get("text"), 60)
                 answer = parse_boat_answer(text, date.today())
@@ -393,7 +384,7 @@ class WebSession:
                     )
                     self.game.state.current_player = winner
                     self.boat_result = result
-                    self.boat_decided = True
+                    self.first_turn_decided = True
                     self.events.append(result)
                 self.revision += 1
                 return
@@ -849,7 +840,7 @@ class WebSession:
                 answer = self.boat_answers.get(seat)
                 state["boat"] = (
                     None
-                    if self.boat_decided
+                    if self.first_turn_decided
                     else {
                         "answered": answer is not None,
                         "mine": answer.raw if answer is not None else None,
@@ -1037,7 +1028,7 @@ function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
  return `<div class=panel><b>When did you last travel by boat? The more recent answer takes the first turn.</b><br><input id=boat-answer type=text maxlength=60 value="${esc(S.boat.mine||'')}"><button onclick="submitBoat()">Submit</button></div>`}
 function submitBoat(){let input=document.getElementById('boat-answer');post('/api/action',{action:'boat_answer',text:input.value})}
 function firstTurnHtml(){if(S.mode!=='bot'||!S.first_turn)return '';
- return `<div class=panel><button onclick="post('/api/action',{action:'first_turn',choice:'me'})">I go first</button><button onclick="post('/api/action',{action:'first_turn',choice:'bot'})">Bot goes first</button></div>`}
+ return `<div class=panel><b>Who goes first?</b><br><button onclick="post('/api/action',{action:'first_turn',choice:'me'})">I go first</button><button onclick="post('/api/action',{action:'first_turn',choice:'bot'})">Bot goes first</button></div>`}
 
 function challengeHtml(){let c=S.challenge;if(S.game_over||!c)return '';
  let dice=c.rolls.map((r,i)=>`<span class="die ${rerollPicks.includes(i)?'picked':''}" onclick="toggleDie(${i})">${r}</span>`).join('');

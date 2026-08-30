@@ -779,6 +779,9 @@ class WebSession:
             player = self.player_for_seat(seat)
             encounter = self._encounter(payload["encounter"])
             indexes = [int(index) for index in payload.get("cards", ())]
+            for index in indexes:
+                if not 0 <= index < len(player.hand):
+                    raise ValueError(f"card index {index} is out of range")
             combo = tuple(player.hand[index] for index in indexes)
             result: dict[str, dict[str, Any]] = {}
             for method in ("sneak", "steal", "strike"):
@@ -1194,6 +1197,8 @@ function render(){
  if(S.boat||S.first_turn)actionDisabled=' disabled';
  if(S.mode==='versus'&&!S.human_turn)actionDisabled=' disabled';
  if(selected&&!S.encounters.some(c=>c.id===selected)){selected=null;method=null}
+ let validCards=cards.filter(i=>Number.isInteger(i)&&i>=0&&i<S.hand.length);
+ if(validCards.length!==cards.length){cards=validCards;method=null}
  let methods=S.game_over?'Game over':selected?['sneak','steal','strike'].map(m=>`<button id="method-${m}"${actionDisabled} onclick="chooseMethod('${m}')" disabled>${m}</button>`).join(''):'Select an encounter first';
  let players=S.players.filter(p=>!(S.mode==='bot'&&S.first_turn&&p.is_bot)).map(p=>{let potions=Array.isArray(p.potions)?esc(p.potions.join(', ')||'none'):p.potions;return `<div class=panel><b>${esc(p.name)} (${esc(p.character)})</b><br><span class=muted>${esc(p.ability)}</span>${p.score===undefined?'':`<br>Score: ${p.score} VP`}<br>Hand: ${p.hand_count} · Hand limit: ${p.hand_limit} · Coins: ${p.coins} · Potions: ${potions}<br>Skills: ${esc(JSON.stringify(p.skills))}<br>Completed: ${esc(completedText(p)||'none')}<br>Treasures: ${p.treasures.length?p.treasures.map(treasureHtml).join(', '):'none'}</div>`}).join('');
  let discardTop=S.discard_top?cardHtml(S.discard_top):'none';
@@ -1246,8 +1251,14 @@ function toggleDie(i){let c=S.challenge;if(!c||c.phase!=='reroll')return;
  else if(rerollPicks.length<c.reroll_limit)rerollPicks=rerollPicks.concat([i]);
  render()}
 async function refreshMethods(){if(S.boat||S.first_turn||!selected||(!S.human_turn&&S.mode==='versus'))return;
- let o=await (await fetch('/api/options',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({encounter:selected,cards})})).json();
- for(let m of ['sneak','steal','strike']){let b=document.getElementById('method-'+m);if(b){b.disabled=!o[m].enabled;b.title=o[m].reason}}
+ let response,o;
+ try{response=await fetch('/api/options',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({encounter:selected,cards})});o=await response.json()}catch{}
+ let methods=['sneak','steal','strike'];
+ if(!response||!response.ok||!o||!methods.every(m=>o[m]&&typeof o[m].enabled==='boolean')){
+  for(let m of methods){let b=document.getElementById('method-'+m);if(b){b.disabled=true;b.title=''}}
+  method=null;syncChallengeButton(false);return
+ }
+ for(let m of methods){let b=document.getElementById('method-'+m);if(b){b.disabled=!o[m].enabled;b.title=o[m].reason}}
  if(method&&!o[method].enabled)method=null;
  syncChallengeButton(!!method)}
 function attempt(){if(S.boat||S.first_turn)return;rerollPicks=[];let payload={action:'attempt',encounter:selected,method,cards};cards=[];post('/api/action',payload)}

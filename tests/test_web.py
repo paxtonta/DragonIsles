@@ -19,6 +19,7 @@ from dragonisles.web import (
     HTML,
     Handler,
     LOGIN_HTML,
+    SESSION,
     WebSession,
     _clean_name,
     configure,
@@ -453,6 +454,27 @@ def test_web_options_enables_strike_for_same_suit_cards():
     )
 
     assert options["strike"] == {"enabled": True, "reason": ""}
+
+
+def test_web_options_rejects_out_of_range_card_index_cleanly():
+    configure("bot", None)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        state = SESSION.state()
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/options",
+            {"encounter": state["encounters"][0]["id"], "cards": [999]},
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert status == 400
+    assert body == {"error": "card index 999 is out of range"}
 
 
 def _force_human_turn(session):
@@ -1010,6 +1032,8 @@ def test_web_refreshes_method_buttons_after_render():
     )
     assert "if(method&&!o[method].enabled)method=null;" in HTML
     assert "syncChallengeButton(!!method)" in HTML
+    assert "if(!response||!response.ok||!o||!methods.every" in HTML
+    assert "b.disabled=true;b.title=''" in HTML
 
 
 def test_web_time_boat_prompt_uses_same_input_and_action():

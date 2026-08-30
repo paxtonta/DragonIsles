@@ -1002,7 +1002,7 @@ pre{white-space:pre-wrap}.events{max-height:180px;overflow:auto}
 </style></head>
 <body><main><h1>DragonIsles <button class=secondary id=theme-toggle onclick="toggleTheme()">Use light mode</button> <button class=secondary type=button onclick="newGame()">New game</button></h1><div id="app">Loading…</div></main>
 <script>
-let S=null, selected=null, method=null, cards=[], rerollPicks=[], discardPicks=[], botTimer=null, requestInFlight=false, stateRevision=0, stateRequest=0;
+let S=null, selected=null, method=null, cards=[], rerollPicks=[], discardPicks=[], boatDraft=null, botTimer=null, requestInFlight=false, stateRevision=0, stateRequest=0;
 document.addEventListener('click',e=>{
  let target=e.target.closest('button,[type="checkbox"],.card,.die');
  if(target)console.log('[DragonIsles click]',JSON.stringify({
@@ -1015,7 +1015,7 @@ function setTheme(theme){document.documentElement.dataset.theme=theme;localStora
 function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
 function newGame(){post('/api/action',{action:'new_game'})}
 async function get(){let request=++stateRequest;let next=await (await fetch('/api/state')).json();if(request!==stateRequest)return;S=next;stateRevision++;render()}
-async function post(path,body){if(body.action==='skill'&&S)body.revision=S.revision;console.log('[DragonIsles action]',JSON.stringify({path:path,body:body,stateRevision:stateRevision,turn:S&&S.turn,humanTurn:S&&S.human_turn,challenge:S&&S.challenge}));if(S&&S.game_over&&body.action!=='new_game')return;if(requestInFlight)return;requestInFlight=true;try{if(body.action==='new_game'||body.action==='skill'){clearTimeout(botTimer);botTimer=null}let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d=await r.json();console.log('[DragonIsles response]',JSON.stringify({action:body.action,ok:r.ok,status:r.status,error:r.ok?null:d.error}));if(!r.ok){let boatText=body.action==='boat_answer'?body.text:null;await get();if(boatText!==null){let input=document.getElementById('boat-answer');if(input)input.value=boatText}alert(d.error);return}if(body.action==='discard')discardPicks=[];selected=null;method=null;cards=[];rerollPicks=[];discardPicks=[];S=d;stateRevision++;render()}finally{requestInFlight=false}}
+async function post(path,body){if(body.action==='skill'&&S)body.revision=S.revision;console.log('[DragonIsles action]',JSON.stringify({path:path,body:body,stateRevision:stateRevision,turn:S&&S.turn,humanTurn:S&&S.human_turn,challenge:S&&S.challenge}));if(S&&S.game_over&&body.action!=='new_game')return;if(requestInFlight)return;requestInFlight=true;try{if(body.action==='new_game'||body.action==='skill'){clearTimeout(botTimer);botTimer=null}let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d=await r.json();console.log('[DragonIsles response]',JSON.stringify({action:body.action,ok:r.ok,status:r.status,error:r.ok?null:d.error}));if(!r.ok){let boatText=body.action==='boat_answer'?body.text:null;await get();if(boatText!==null){boatDraft=boatText;let input=document.getElementById('boat-answer');if(input)input.value=boatText}alert(d.error);return}if(body.action==='boat_answer'||body.action==='new_game')boatDraft=null;if(body.action==='discard')discardPicks=[];selected=null;method=null;cards=[];rerollPicks=[];discardPicks=[];S=d;stateRevision++;render()}finally{requestInFlight=false}}
 function esc(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 function encounterHtml(){return S.encounters.map((c,i)=>`<div class="card encounter ${selected===c.id?'selected':''}"${S.game_over?'':` onclick="pick('${c.id}')"`}><b>${i+1}. ${esc(c.name)}</b> <span class="${c.sea?'sea':'land'}">${c.sea?'SEA':'LAND'}</span><br>${esc(c.type)} · ${c.vp} VP · ${c.icons} icon(s)<br><span class="muted">${esc(c.mechanics)}</span></div>`).join('')}
@@ -1026,7 +1026,7 @@ function handHtml(){let disabled=S.game_over||S.boat||S.first_turn||(!S.human_tu
 
 function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
  if(S.boat.waiting)return `<div class=panel><b>When did you last travel by boat? The more recent answer takes the first turn.</b><br>Your answer: ${esc(S.boat.mine)}<br><span class=muted>Waiting for ${esc(S.opponent_name)}'s answer…</span></div>`;
- return `<div class=panel><b>When did you last travel by boat? The more recent answer takes the first turn.</b><br><input id=boat-answer type=text maxlength=60 value="${esc(S.boat.mine||'')}"><button onclick="submitBoat()">Submit</button></div>`}
+ return `<div class=panel><b>When did you last travel by boat? The more recent answer takes the first turn.</b><br><input id=boat-answer type=text maxlength=60 value="${esc(boatDraft!==null?boatDraft:(S.boat.mine||''))}" oninput="boatDraft=this.value"><button onclick="submitBoat()">Submit</button></div>`}
 function submitBoat(){let input=document.getElementById('boat-answer');post('/api/action',{action:'boat_answer',text:input.value})}
 function firstTurnHtml(){if(S.mode!=='bot'||!S.first_turn)return '';
  return `<div class=panel><b>Who goes first?</b><br><button onclick="post('/api/action',{action:'first_turn',choice:'me'})">I go first</button><button onclick="post('/api/action',{action:'first_turn',choice:'bot'})">Bot goes first</button></div>`}
@@ -1070,6 +1070,7 @@ function potionHtml(){let me=S.players[S.seat];if(S.game_over||S.boat||S.first_t
 
 function render(){
  let busy=S.challenge||S.prepare||S.treasure||S.trader||S.discard;
+ let boatFocused=document.activeElement&&document.activeElement.id==='boat-answer';
  let actionDisabled=S.game_over?' disabled':'';
  if(S.boat||S.first_turn)actionDisabled=' disabled';
  if(S.mode==='versus'&&!S.human_turn)actionDisabled=' disabled';
@@ -1080,10 +1081,10 @@ function render(){
  let market=S.market.map(cardHtml).join(', ');
  let tokens=S.tokens?`<div class=panel><b>Token supply</b><br>Potions left: ${S.tokens.potions} · Coins left: ${S.tokens.coins.map(c=>c[1]+'×'+c[0]).join(', ')}</div>`:'';
  document.getElementById('app').innerHTML=`<div class=grid><section>
- <div class=panel><b>Turn ${S.turn}</b> — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}<br><span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ <div class=panel><b>Turn ${S.turn}</b>${S.boat||S.first_turn?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}`}<br><span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
  ${firstTurnHtml()}
  ${boatHtml()}
- ${S.mode==='versus'&&!S.human_turn?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
+ ${S.mode==='versus'&&!S.boat&&!S.human_turn?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
  ${gameOverHtml()}
  <h2>Encounters</h2><div class=encounters>${encounterHtml()}</div>
  ${challengeHtml()}${treasureChoiceHtml()}${traderHtml()}${discardHtml()}${prepareHtml()}
@@ -1093,6 +1094,7 @@ function render(){
  <div class=panel><b>Skill ladders</b><br>${ladderHtml()}</div>
  <div class=panel><b>Events</b><pre class=events>${esc(S.events.join('\n'))}</pre></div>
  </section><aside><h2>Public state</h2>${players}<div class=panel><b>Tavern</b>: ${market}</div><div class=panel><b>Discard pile top</b>: ${discardTop}</div>${tokens}</aside></div>`;
+ if(boatFocused){let input=document.getElementById('boat-answer');if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length)}}
  if(S.mode==='bot'&&S.discard&&S.discard.player_is_bot){
   let revision=stateRevision,serverRevision=S.revision;
   clearTimeout(botTimer);

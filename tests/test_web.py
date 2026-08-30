@@ -957,6 +957,25 @@ def test_web_refreshes_after_rejected_skill_choice():
     assert "}else{clearTimeout(botTimer);botTimer=null}" in HTML
 
 
+def test_web_preserves_boat_draft_across_refreshes():
+    assert "boatDraft=null" in HTML
+    assert "boatDraft!==null?boatDraft:(S.boat.mine||'')" in HTML
+    assert 'oninput="boatDraft=this.value"' in HTML
+    assert "body.action==='boat_answer'||body.action==='new_game')boatDraft=null" in HTML
+    assert "let boatFocused=document.activeElement&&document.activeElement.id==='boat-answer'" in HTML
+    assert "input.setSelectionRange(input.value.length,input.value.length)" in HTML
+    assert "if(boatText!==null){boatDraft=boatText" in HTML
+
+
+def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
+    assert "S.boat||S.first_turn?'':` —" in HTML
+    assert (
+        "${S.mode==='versus'&&!S.boat&&!S.human_turn?`<div class=panel>Waiting for "
+        in HTML
+    )
+    assert "Waiting for ${esc(S.opponent_name)}…" in HTML
+
+
 def test_web_logs_clicks_and_action_results_to_the_console():
     assert "[DragonIsles click]" in HTML
     assert "[DragonIsles action]" in HTML

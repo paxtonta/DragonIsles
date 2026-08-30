@@ -704,7 +704,7 @@
       "blocked_method": null,
       "rewards": {
         "steal": {
-          "coins": 1
+          "treasure": true
         }
       }
     },
@@ -722,7 +722,7 @@
       "blocked_method": null,
       "rewards": {
         "steal": {
-          "coins": 1
+          "treasure": true
         }
       }
     },
@@ -740,7 +740,7 @@
       "blocked_method": null,
       "rewards": {
         "steal": {
-          "coins": 1
+          "treasure": true
         }
       }
     },

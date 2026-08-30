@@ -597,6 +597,18 @@ def test_shipped_deck_tiers_match_family_ladders_and_rebalanced_cards():
     assert by_id["dragon_king"].icons == 1
 
 
+def test_luck_dragons_reward_a_treasure_for_stealing():
+    cards = load_encounters(Path("data/encounters.json"))
+    luck_dragons = [card for card in cards if card.name.upper() == "LUCK DRAGON"]
+
+    assert len(luck_dragons) == 3
+    for card in luck_dragons:
+        assert card.rewards == {"steal": ChallengeReward(treasure=True)}
+        assert card.rewards["steal"].coins == 0
+        assert "sneak" not in card.rewards
+        assert "strike" not in card.rewards
+
+
 def test_only_sea_encounters_can_have_multiple_icons():
     cards = load_encounters(Path("data/encounters.json"))
     assert all(card.is_sea for card in cards if card.icons > 1)

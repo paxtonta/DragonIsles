@@ -234,24 +234,29 @@ def parse_boat_answer(text: str, today: date) -> BoatAnswer:
 def resolve_first_seat(
     answers: dict[int, BoatAnswer],
     rng: random.Random,
-    names: dict[int, str] | str,
-    second_name: str | None = None,
+    names: dict[int, str],
 ) -> tuple[int, str]:
     first = answers[0]
     second = answers[1]
     if first.tier == 0 or second.tier == 0:
         raise ValueError("boat answers must be readable")
-    if isinstance(names, str):
-        if second_name is None:
-            raise ValueError("both player names are required")
-        names = {0: names, 1: second_name}
     first_display = f'{names[0]}: "{first.raw}"'
     second_display = f'{names[1]}: "{second.raw}"'
     explanation = f"{first_display} · {second_display} — "
     if first.tier > second.tier:
-        return 0, explanation + f"{names[0]} gave the stronger answer and goes first."
+        return (
+            0,
+            explanation
+            + f"{names[0]} has travelled by boat and {names[1]} never has, "
+            f"so {names[0]} goes first.",
+        )
     if second.tier > first.tier:
-        return 1, explanation + f"{names[1]} gave the stronger answer and goes first."
+        return (
+            1,
+            explanation
+            + f"{names[1]} has travelled by boat and {names[0]} never has, "
+            f"so {names[1]} goes first.",
+        )
     if first.tier == 3 and first.date != second.date:
         winner = 0 if first.date > second.date else 1
         return (

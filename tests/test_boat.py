@@ -122,7 +122,7 @@ def test_resolve_first_seat_prefers_tier_then_date():
     assert winner == 1
     assert 'Ari: "never"' in explanation
     assert 'Crendia: "last week"' in explanation
-    assert "Crendia" in explanation
+    assert "Crendia has travelled by boat and Ari never has, so Crendia goes first." in explanation
 
 
 def test_resolve_first_seat_prefers_later_dated_answer():

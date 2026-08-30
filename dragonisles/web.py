@@ -915,6 +915,7 @@ setInterval(()=>{if(S&&(!S.mode||S.mode==='bot'||S.human_turn)&&!S.challenge&&!S
 SESSION = WebSession()
 PASSPHRASE: str | None = None
 AUTH_SESSIONS: dict[str, int] = {}
+SECURE_COOKIE = False
 DRAGONISLES_DIR = Path(__file__).parent
 
 LOGIN_HTML = """<!doctype html>
@@ -933,11 +934,14 @@ async function join(event){event.preventDefault();let passphrase=event.target.pa
 </script></body></html>"""
 
 
-def configure(mode: str, passphrase: str | None) -> None:
-    global PASSPHRASE
+def configure(
+    mode: str, passphrase: str | None, secure_cookie: bool = False
+) -> None:
+    global PASSPHRASE, SECURE_COOKIE
     with SESSION.lock:
         SESSION.new_game(mode)
         PASSPHRASE = passphrase
+        SECURE_COOKIE = secure_cookie
         AUTH_SESSIONS.clear()
 
 
@@ -949,6 +953,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _seat(self) -> int | None:
         if PASSPHRASE is None:
+            if SESSION.mode == "versus":
+                return None
             return 0
         token = self._cookie_token()
         if token is None:
@@ -975,6 +981,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(SESSION.state(seat))
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if path in {"/recording", "/gameplay.mp4"} and self._require_seat() is None:
             return
         if path == "/recording":
             self.send_file(DRAGONISLES_DIR / "recording.html", "text/html")
@@ -1016,12 +1024,17 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/options":
                 body = SESSION.options(payload, seat)
             elif path == "/api/action":
-                SESSION.action(payload, seat)
-                if payload.get("action") == "new_game":
-                    with SESSION.lock:
-                        if SESSION.mode == "bot":
-                            for token in AUTH_SESSIONS:
-                                AUTH_SESSIONS[token] = 0
+                with SESSION.lock:
+                    previous_mode = SESSION.mode
+                    SESSION.action(payload, seat)
+                    if (
+                        payload.get("action") == "new_game"
+                        and SESSION.mode != previous_mode
+                    ):
+                        token = self._cookie_token()
+                        AUTH_SESSIONS.clear()
+                        if token is not None:
+                            AUTH_SESSIONS[token] = 0
                 SESSION.revision += 1
                 body = SESSION.state(seat)
             else:
@@ -1037,7 +1050,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         supplied = payload.get("passphrase", "")
         if not isinstance(supplied, str) or not hmac.compare_digest(
-            supplied, PASSPHRASE
+            supplied.encode(), PASSPHRASE.encode()
         ):
             self.send_json({"error": "invalid passphrase"}, HTTPStatus.FORBIDDEN)
             return
@@ -1067,6 +1080,7 @@ class Handler(BaseHTTPRequestHandler):
             cookie=(
                 "dragonisles_session="
                 f"{token}; HttpOnly; SameSite=Lax; Path=/"
+                + ("; Secure" if SECURE_COOKIE else "")
             ),
         )
 
@@ -1100,8 +1114,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument("--mode", choices=("bot", "versus"), default="bot")
     parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument(
+        "--secure-cookie",
+        action="store_true",
+        default=bool(os.environ.get("DRAGONISLES_SECURE_COOKIE")),
+    )
     args = parser.parse_args(argv)
-    configure(args.mode, args.passphrase)
+    if args.mode == "versus" and args.passphrase is None:
+        args.passphrase = secrets.token_urlsafe(6)
+        print(f"Passphrase: {args.passphrase}", flush=True)
+    configure(args.mode, args.passphrase, args.secure_cookie)
     try:
         server = ThreadingHTTPServer((args.host, args.port), Handler)
     except OSError as exc:

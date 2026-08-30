@@ -1109,3 +1109,76 @@ def test_passphrase_assigns_two_seats_and_rejects_a_third():
         server.shutdown()
         server.server_close()
         configure("bot", None)
+
+
+def test_mode_switch_reassigns_authenticated_seats():
+    configure("bot", "test123")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, headers, body = _web_request(
+            server, "POST", "/api/join", {"passphrase": "test123"}
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+        first_cookie = next(value for key, value in headers if key == "Set-Cookie")
+        first_cookie = first_cookie.split(";", 1)[0]
+
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/action",
+            {"action": "new_game", "mode": "versus"},
+            cookie=first_cookie,
+        )
+        assert status == 200
+        assert body["mode"] == "versus"
+        assert body["seat"] == 0
+
+        status, _, body = _web_request(
+            server, "POST", "/api/join", {"passphrase": "test123"}
+        )
+        assert status == 200
+        assert body == {"seat": 1}
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)
+
+
+def test_non_ascii_passphrase_is_rejected_without_server_error():
+    configure("bot", "test123")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, _, body = _web_request(
+            server, "POST", "/api/join", {"passphrase": "pässphrase"}
+        )
+        assert status == 403
+        assert body == {"error": "invalid passphrase"}
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)
+
+
+def test_versus_without_passphrase_requires_authentication_but_bot_does_not():
+    configure("versus", None)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, _, _ = _web_request(server, "GET", "/api/state")
+        assert status == 403
+
+        configure("bot", None)
+        status, _, body = _web_request(server, "GET", "/api/state")
+        assert status == 200
+        assert body["mode"] == "bot"
+        assert body["seat"] == 0
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)

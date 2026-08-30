@@ -104,11 +104,48 @@ def test_web_state_exposes_board_and_public_state():
 def test_web_new_game_button_resets_the_session():
     assert "New game" in HTML
     session = WebSession()
+    old_game = session.game
+    old_encounters = old_game.state.encounters
+    session.revision = 7
+    session.pending = {"stale": True}
+    session.pending_challenge = object()
+    session.pending_prepare = {
+        "player": session.human,
+        "remaining": 1,
+        "drawn": [],
+    }
+    session.pending_free_action_discard = session.human
     session.events.append("old game")
     session.action({"action": "new_game"})
 
     state = session.state()
-    assert state["turn"] == 1
+    assert session.game is not old_game
+    assert session.game.state.encounters is not old_encounters
+    assert state["revision"] == 0
+    assert state["turn"] in (1, 2)
+    players = session.game.state.players
+    assert "stale" not in session.pending
+    assert (
+        session.pending_challenge is None
+        or session.pending_challenge.player in players
+    )
+    assert session.pending_prepare is None
+    assert session.pending_bot_prepare is None or (
+        session.pending_bot_prepare["player"] in players
+    )
+    assert session.pending_free_action_discard is None
+    assert (
+        session.game.pending_discard is None
+        or session.game.pending_discard.player in players
+    )
+    assert (
+        session.game.pending_treasure_draw is None
+        or session.game.pending_treasure_draw.player in players
+    )
+    assert (
+        session.game.pending_trader_draw is None
+        or session.game.pending_trader_draw.player in players
+    )
     assert "old game" not in state["events"]
 
 

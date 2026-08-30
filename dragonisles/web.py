@@ -24,7 +24,8 @@ from .combos import is_legal, is_legal_reason
 from .characters import CHARACTERS, SKILL_TRACKS, TrackStep, available_tracks
 from .encounters import Encounter, load_encounters
 from .engine import ChallengeProgress, Game, GameInteraction, Player
-from .persistence import load, save
+from .persistence import load as load_state
+from .persistence import save as save_state
 from .potions import PLUS_TWO
 from .scoring import trophy_holders
 from .treasures import Treasure
@@ -109,6 +110,7 @@ class WebSession:
             self.pending_bot_prepare = None
             self.pending_free_action_discard = None
             self.revision += 1
+            self._run_bots()
 
     def _save(self) -> None:
         if self.state_path is None:
@@ -124,7 +126,7 @@ class WebSession:
             or self.game.pending_trader_draw is not None
         ):
             return
-        save(self.state_path, self.mode, self.game, AUTH_SESSIONS)
+        save_state(self.state_path, self.mode, self.game, AUTH_SESSIONS)
 
     @property
     def human(self) -> Player:
@@ -989,7 +991,7 @@ def configure(
 ) -> None:
     global PASSPHRASE, SECURE_COOKIE
     with SESSION.lock:
-        loaded = load(state_path) if state_path is not None else None
+        loaded = load_state(state_path) if state_path is not None else None
         SESSION.state_path = None
         AUTH_SESSIONS.clear()
         if loaded is not None and loaded[0] == mode:

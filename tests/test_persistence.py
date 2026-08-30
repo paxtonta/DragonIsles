@@ -4,6 +4,7 @@ import threading
 
 from http.server import ThreadingHTTPServer
 
+from dragonisles.bot import Decision
 from dragonisles.persistence import load, save
 from dragonisles.web import Handler, WebSession, configure
 
@@ -197,3 +198,27 @@ def test_turn_continues_after_restore_in_both_modes(tmp_path):
                     seat=0,
                 )
         assert session.game.state.turn_number >= 2
+
+
+def test_restore_resumes_a_bot_turn():
+    source = WebSession("bot")
+    bot = source.game.state.players[1]
+    source.pending = {}
+    source.pending_challenge = None
+    source.pending_skill_tracks = None
+    source.pending_prepare = None
+    source.pending_bot_prepare = None
+    source.pending_free_action_discard = None
+    source.game.pending_discard = None
+    source.game.pending_treasure_draw = None
+    source.game.pending_trader_draw = None
+    source.game.state.current_player = 1
+    bot.hand[:] = bot.hand[:1]
+    source.game.bot_policy.choose = lambda _context: Decision("prepare")
+    prepares = bot.prepares
+
+    restored = WebSession("bot")
+    restored.restore("bot", source.game)
+
+    assert bot.prepares == prepares + 1
+    assert restored.game.state.current_player == 0

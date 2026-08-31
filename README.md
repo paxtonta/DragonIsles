@@ -38,3 +38,36 @@ These launchers update themselves from GitHub each time they start.
 Set `DRAGONISLES_NO_UPDATE=1` to skip the update check.
 Double-click `Play with a friend.command` to start a private Cloudflare quick tunnel.
 Send your friend the displayed link and passphrase.
+
+## Troubleshooting
+
+```text
+ERROR: file:///Users/~ does not appear to be a Python project:
+neither 'setup.py' nor 'pyproject.toml' found.
+```
+
+The Terminal is in your home folder instead of the game folder, so the
+command looked for the game where it isn't. Move into the folder that holds
+`pyproject.toml`, then run the command again:
+
+```bash
+cd ~/dragonisles-bot
+ls pyproject.toml
+```
+
+If `ls` says `No such file or directory`, the game folder is somewhere else or
+not downloaded yet. Find it with:
+
+```bash
+ls -d ~/*dragonisles* ~/Downloads/*dragonisles* ~/Desktop/*dragonisles* 2>/dev/null
+```
+
+Then `cd` into the path it prints. If nothing prints, download the game again:
+
+```bash
+git clone https://github.com/Muxeco/dragonisles-bot.git ~/dragonisles-bot
+cd ~/dragonisles-bot
+```
+
+Using `./"Play DragonIsles.command"` avoids this error entirely, because the
+launcher moves into its own folder before starting the game.

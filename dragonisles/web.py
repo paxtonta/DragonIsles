@@ -1272,7 +1272,6 @@ SESSION = WebSession()
 PASSPHRASE: str | None = None
 AUTH_SESSIONS: dict[str, int] = {}
 SECURE_COOKIE = False
-DRAGONISLES_DIR = Path(__file__).parent
 
 
 def _clean_text(value: Any, limit: int) -> str:
@@ -1363,25 +1362,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
             return
-        if path in {"/recording", "/gameplay.mp4"} and self._require_seat() is None:
-            return
-        if path == "/recording":
-            self.send_file(DRAGONISLES_DIR / "recording.html", "text/html")
-        elif path == "/gameplay.mp4":
-            self.send_file(DRAGONISLES_DIR / "gameplay.mp4", "video/mp4")
-        else:
-            self.send_html(HTML)
-
-    def send_file(self, path: Path, content_type: str) -> None:
-        if not path.is_file():
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        data = path.read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self.send_html(HTML)
 
     def send_html(self, body: str) -> None:
         data = body.encode()

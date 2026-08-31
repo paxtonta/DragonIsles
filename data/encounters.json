@@ -518,9 +518,9 @@
       "is_sea": false,
       "icons": 1,
       "victory_points": 1,
-      "sneak_target": 5,
+      "sneak_target": 4,
       "steal_target": 6,
-      "strike_target": 4,
+      "strike_target": 5,
       "blocked_method": null,
       "rewards": {
         "steal": {
@@ -536,9 +536,9 @@
       "is_sea": false,
       "icons": 1,
       "victory_points": 1,
-      "sneak_target": 5,
+      "sneak_target": 4,
       "steal_target": 6,
-      "strike_target": 4,
+      "strike_target": 5,
       "blocked_method": null,
       "rewards": {
         "steal": {

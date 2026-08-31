@@ -1100,7 +1100,7 @@ def serialize_ladders(player: Player) -> dict[str, dict[str, Any]]:
 
 
 HTML = r"""<!doctype html>
-<html><head><meta charset="utf-8"><title>DragonIsles</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DragonIsles</title>
 <style>
 :root{--bg:#101827;--text:#e8eef7;--card:#1d2a3b;--border:#40536b;--panel:#172335;--control:#26364a;--muted:#aebdd0;--tooltip:#08101d}
 :root[data-theme="light"]{--bg:#f4f7fb;--text:#172335;--card:#fff;--border:#b7c4d4;--panel:#e7edf5;--control:#dbe5f0;--muted:#536579;--tooltip:#fff}
@@ -1287,7 +1287,7 @@ def _clean_name(value: Any) -> str | None:
 
 
 LOGIN_HTML = """<!doctype html>
-<html><head><meta charset="utf-8"><title>DragonIsles</title></head>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DragonIsles</title></head>
 <body><main><h1>DragonIsles</h1>
 <p>This private game is for whoever has the link and passphrase.</p>
 <form onsubmit="join(event)">

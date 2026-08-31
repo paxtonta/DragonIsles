@@ -172,11 +172,11 @@ CHARACTERS = {
 }
 
 ABILITIES: dict[str, str] = {
-    "Monk": "Draws 1 extra card after using a potion.",
+    "Monk": "Draws 1 extra card from the Adventure Deck after using a potion.",
     "Pirate": "Coins are worth double when scoring, and its Sea skill adds to Sea encounters.",
-    "Warrior": "Draws 1 card after completing an encounter.",
+    "Warrior": "Draws 1 card from the Adventure Deck after completing an encounter.",
     "Sorcerer": "Prepare draws 3 cards instead of 2.",
-    "Trader": "Draws 3 cards on gaining a treasure and keeps 1 of them.",
+    "Trader": "Draws 3 cards from the Adventure Deck on gaining a treasure and keeps 1 of them.",
 }
 
 # TODO(user): confirm whether the Warrior draw trigger is encounter completion.

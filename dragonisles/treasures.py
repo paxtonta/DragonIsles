@@ -58,7 +58,8 @@ GREEN_TREASURE_DESCRIPTIONS = {
         "Once per Challenge, when you roll a 1, reroll all 1s and roll 1 additional die."
     ),
     "roll_ones_draw": (
-        "Once per Challenge, when you roll a 1, reroll all 1s and draw 1 Adventure Card."
+        "Once per Challenge, when you roll a 1, reroll all 1s and "
+        "draw 1 Adventure Card from the Adventure Deck."
     ),
     "roll_ones_coin": (
         "Once per Challenge, when you roll a 1, reroll all 1s and earn 1 Coin Token."
@@ -69,18 +70,27 @@ GREEN_TREASURE_DESCRIPTIONS = {
     ),
     "low_hand_draw": (
         "When you have fewer than 3 Adventure Cards in hand after successfully "
-        "Challenging an Encounter, draw 1 Adventure Card."
+        "Challenging an Encounter, draw 1 Adventure Card from the Adventure Deck."
     ),
-    "steal_draw": "When you successfully Challenge by Stealing, draw 1 Adventure Card.",
-    "strike_draw": "When you successfully Challenge by Striking, draw 1 Adventure Card.",
-    "sneak_draw": "When you successfully Challenge by Sneaking, draw 1 Adventure Card.",
+    "steal_draw": (
+        "When you successfully Challenge by Stealing, draw 1 Adventure Card "
+        "from the Adventure Deck."
+    ),
+    "strike_draw": (
+        "When you successfully Challenge by Striking, draw 1 Adventure Card "
+        "from the Adventure Deck."
+    ),
+    "sneak_draw": (
+        "When you successfully Challenge by Sneaking, draw 1 Adventure Card "
+        "from the Adventure Deck."
+    ),
     "three_color_coin": (
         "When you successfully complete a Challenge with at least 3 different colors, "
         "earn 1 Coin Token."
     ),
     "three_color_draw": (
         "When you successfully complete a Challenge with at least 3 different colors, "
-        "draw 1 Adventure Card."
+        "draw 1 Adventure Card from the Adventure Deck."
     ),
 }
 

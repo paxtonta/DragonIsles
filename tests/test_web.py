@@ -1014,11 +1014,10 @@ def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
     assert "Waiting for ${esc(S.opponent_name)}…" in HTML
 
 
-def test_web_hides_bot_panel_and_turn_line_while_first_turn_is_pending():
-    assert (
-        "S.players.filter(p=>!(S.mode==='bot'&&S.first_turn&&p.is_bot))"
-        in HTML
-    )
+def test_web_keeps_bot_panel_visible_while_first_turn_is_pending():
+    assert "let players=S.players.map(p=>" in HTML
+    assert "${esc(p.character)}" in HTML
+    assert "${esc(p.ability)}" in HTML
     assert "S.first_turn?'':`<b>Turn ${S.turn}</b>" in HTML
     assert "S.mode==='bot'&&!S.first_turn&&S.discard" in HTML
     assert "S.mode==='bot'&&!S.first_turn&&S.challenge" in HTML

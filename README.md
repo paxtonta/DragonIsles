@@ -18,6 +18,8 @@ Every time:
 ```
 
 Then open http://127.0.0.1:8190 in a browser. Press Ctrl+C in the Terminal to stop.
+This direct command does not check GitHub for updates. To update automatically before
+starting, use the launcher described below.
 
 ## Play with a friend
 ```bash
@@ -34,7 +36,14 @@ Use Terminal to avoid the macOS block:
 cd ~/dragonisles-bot
 ./"Play DragonIsles.command"
 ```
-These launchers update themselves from GitHub each time they start.
+The launcher checks GitHub and fast-forwards a clean checkout on `main` before starting.
+If you use the direct Python command instead, update manually first with:
+
+```bash
+cd ~/dragonisles-bot
+git pull --ff-only origin main
+```
+
 Set `DRAGONISLES_NO_UPDATE=1` to skip the update check.
 Double-click `Play with a friend.command` to start a private Cloudflare quick tunnel.
 Send your friend the displayed link and passphrase.

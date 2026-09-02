@@ -9,11 +9,23 @@ dragonisles_self_update() {
 
     local launch_root repo_root remote branch status old_head new_head
     launch_root="$(pwd -P)"
-    repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
-    [ "$repo_root" = "$launch_root" ] || return 0
-    git remote get-url origin >/dev/null 2>&1 || return 0
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+        echo "Skipping the update check: this folder is not a Git checkout."
+        return 0
+    }
+    if [ "$repo_root" != "$launch_root" ]; then
+        echo "Skipping the update check: launch from the repository folder."
+        return 0
+    fi
+    if ! git remote get-url origin >/dev/null 2>&1; then
+        echo "Skipping the update check: no GitHub origin is configured."
+        return 0
+    fi
     branch="$(git symbolic-ref --short -q HEAD 2>/dev/null)" || return 0
-    [ "$branch" = "main" ] || return 0
+    if [ "$branch" != "main" ]; then
+        echo "Skipping the update check: checkout is on '$branch', not 'main'."
+        return 0
+    fi
     status="$(git status --porcelain 2>/dev/null)" || return 0
     if [ -n "$status" ]; then
         echo "Skipping the update check: you have local changes."

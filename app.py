@@ -80,9 +80,12 @@ def _error(message: str, status: int = HTTPStatus.FORBIDDEN) -> JSONResponse:
 def _configure() -> None:
     mode = os.environ.get("DRAGONISLES_MODE", "versus")
     passphrase = os.environ.get("DRAGONISLES_PASSPHRASE")
+    if mode != "versus":
+        passphrase = None
     if mode == "versus" and passphrase is None:
-        passphrase = secrets.token_urlsafe(24)
-        print(f"DragonIsles passphrase: {passphrase}", flush=True)
+        raise RuntimeError(
+            "DRAGONISLES_PASSPHRASE must be configured for versus mode"
+        )
     state_file = os.environ.get("DRAGONISLES_STATE_FILE")
     if state_file is None and Path("/data").is_dir():
         state_file = "/data/dragonisles-state.json"

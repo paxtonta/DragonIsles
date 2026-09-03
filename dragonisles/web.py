@@ -7,6 +7,7 @@ import hmac
 import os
 import random
 import secrets
+import sys
 import threading
 from argparse import ArgumentParser
 from collections.abc import Sequence
@@ -40,7 +41,12 @@ from .scoring import trophy_holders
 from .treasures import Treasure
 
 
-ROOT = Path(__file__).parent.parent
+SOURCE_ROOT = Path(__file__).parent.parent
+ROOT = (
+    SOURCE_ROOT
+    if (SOURCE_ROOT / "data" / "encounters.json").exists()
+    else Path(sys.prefix)
+)
 
 
 class WebSession:

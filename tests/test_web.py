@@ -1066,10 +1066,12 @@ def test_web_preserves_boat_draft_across_refreshes():
 def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
     assert "S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` —" in HTML
     assert (
-        "${S.mode==='versus'&&!S.boat&&!S.human_turn&&S.opponent_name&&!S.challenge&&!S.discard?`<div class=panel>Waiting for "
+        "${S.mode==='versus'&&!S.boat&&!S.human_turn&&!S.challenge&&!S.discard?`<div class=panel>${S.opponent_name?`Waiting for "
         in HTML
     )
     assert "Waiting for ${esc(S.opponent_name)}…" in HTML
+    assert "No other player has joined yet." in HTML
+    assert "S.mode==='versus'?`vs ${esc(S.opponent_name||'no one yet')}`:'vs Bot'" in HTML
 
 
 def test_web_keeps_bot_panel_visible_while_first_turn_is_pending():

@@ -1008,7 +1008,7 @@ def test_web_preserves_boat_draft_across_refreshes():
 def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
     assert "S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` —" in HTML
     assert (
-        "${S.mode==='versus'&&!S.boat&&!S.human_turn?`<div class=panel>Waiting for "
+        "${S.mode==='versus'&&!S.boat&&!S.human_turn&&S.opponent_name?`<div class=panel>Waiting for "
         in HTML
     )
     assert "Waiting for ${esc(S.opponent_name)}…" in HTML
@@ -1543,7 +1543,8 @@ def test_versus_names_are_sanitized_and_limited_to_their_seat():
         )
         assert status == 200
         assert body["seat_name"] == "Player 1"
-        assert body["opponent_name"] == "Player 2"
+        assert body["opponent_name"] is None
+        assert [player["name"] for player in body["players"]] == ["Player 1"]
 
         status, _, body = _web_request(
             server,

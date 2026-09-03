@@ -807,11 +807,19 @@ class WebSession:
         with self.lock:
             player = self.player_for_seat(seat)
             opponent = self.game.state.players[1 - seat]
+            occupied_seats = (
+                set(AUTH_SESSIONS.values())
+                if self.mode == "versus" and PASSPHRASE is not None
+                else {0, 1}
+            )
             players = []
-            for listed_player in self.game.state.players:
+            for listed_seat, listed_player in enumerate(self.game.state.players):
+                if listed_seat not in occupied_seats:
+                    continue
                 serialized = serialize_player(
                     listed_player, reveal_potions=listed_player is player
                 )
+                serialized["seat"] = listed_seat
                 serialized["score"] = self.game.score(listed_player).total
                 serialized["coin_points"] = self.game.score(listed_player).coin_points
                 players.append(serialized)
@@ -860,7 +868,9 @@ class WebSession:
                 "mode": self.mode,
                 "seat": seat,
                 "seat_name": player.name,
-                "opponent_name": opponent.name,
+                "opponent_name": (
+                    opponent.name if 1 - seat in occupied_seats else None
+                ),
                 "human_turn": self.game.state.players[self.game.state.current_player]
                 is player,
                 "die_faces": list(self.game.rules.die_faces),
@@ -1184,9 +1194,10 @@ function discardHtml(){let d=S.discard;if(S.game_over||!d)return '';
  let picks=S.hand.map(c=>`<label><input type=checkbox ${discardPicks.includes(c.index)?'checked':''} onchange="toggleDiscard(${c.index})"> ${cardHtml(c)}</label>`).join('');
  return `<div class=panel><b>Choose discard</b> — select one card (${d.count} remaining):<br><div class=hand>${picks}</div><button onclick="post('/api/action',{action:'discard',cards:discardPicks})" ${discardPicks.length!==1?'disabled':''}>Discard selected</button></div>`}
 
-function potionStatusHtml(){let me=S.players[S.seat];let kinds=me.potions.length?me.potions.join(', '):'none';
+function playerForSeat(seat){return S.players.find(p=>p.seat===seat)}
+function potionStatusHtml(){let me=playerForSeat(S.seat);let kinds=me.potions.length?me.potions.join(', '):'none';
  return `<span class=muted>Potions: ${esc(kinds)}. +2 available: ${me.potions.includes('+2')?'yes':'no'}.</span>`}
-function potionHtml(){let me=S.players[S.seat];if(S.game_over||S.boat||S.first_turn||!S.human_turn||!me.potions.length)return '';
+function potionHtml(){let me=playerForSeat(S.seat);if(S.game_over||S.boat||S.first_turn||!S.human_turn||!me.potions.length)return '';
  let buttons=me.potions.map((k,i)=>k==='+2'?'':`<button onclick="post('/api/action',{action:'potion',potion:${i}})">Use ${esc(k)}</button>`).join('');
  return `<div class=panel><b>Potion effects</b><br><span class=muted>+2 — during a Challenge, adds 2 to your total; usable again if you hold more than one.<br>Draw 2 — draw two cards from the Adventure Deck immediately.<br>Purge — draw one card from the Adventure Deck, then discard the whole Encounter row and deal a new one.<br>Potion draws always come from the Adventure Deck; only Prepare can take a Tavern card.</span><br>${buttons}</div>`}
 
@@ -1208,7 +1219,7 @@ function render(){
  <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
  ${firstTurnHtml()}
  ${boatHtml()}
- ${S.mode==='versus'&&!S.boat&&!S.human_turn?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
+ ${S.mode==='versus'&&!S.boat&&!S.human_turn&&S.opponent_name?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
  ${gameOverHtml()}
  <h2>Encounters</h2><div class=encounters>${encounterHtml()}</div>
  ${challengeHtml()}${treasureChoiceHtml()}${traderHtml()}${discardHtml()}${prepareHtml()}

@@ -128,6 +128,10 @@ def test_player_panels_render_character_abilities():
     assert "esc(p.ability)" in HTML
 
 
+def test_trophy_names_show_point_values_on_hover():
+    assert 'title="${esc(kind)} trophy: ${kind===\'all\'?5:3} VP"' in HTML
+
+
 def test_web_new_game_button_resets_the_session():
     assert "New game" in HTML
     session = _ready_bot_session()

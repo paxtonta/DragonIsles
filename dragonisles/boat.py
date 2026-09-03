@@ -198,13 +198,21 @@ def _month_date(month: int, day: int, year: int | None, today: date) -> date | N
 
 
 def _parse_month_date(text: str, today: date) -> date | None:
-    match = re.fullmatch(r"(\d{1,2}) ([A-Za-z]+)(?: (\d{4}))?", text)
+    match = re.fullmatch(
+        r"(\d{1,2})(?:st|nd|rd|th)? ([A-Za-z]+)(?: (\d{4}))?",
+        text,
+        re.IGNORECASE,
+    )
     if match is not None:
         day, month_name, year = match.groups()
         month = _MONTHS.get(month_name.casefold())
         if month is not None:
             return _month_date(month, int(day), int(year) if year else None, today)
-    match = re.fullmatch(r"([A-Za-z]+) (\d{1,2})(?:,? (\d{4}))?", text)
+    match = re.fullmatch(
+        r"([A-Za-z]+) (\d{1,2})(?:st|nd|rd|th)?(?:,? (\d{4}))?",
+        text,
+        re.IGNORECASE,
+    )
     if match is not None:
         month_name, day, year = match.groups()
         month = _MONTHS.get(month_name.casefold())

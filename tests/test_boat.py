@@ -166,6 +166,11 @@ def test_future_iso_date_is_clamped_to_today():
     assert answer == BoatAnswer("2030-01-01", 3, TODAY)
 
 
+def test_ordinal_month_dates_parse_as_specific_dates():
+    assert parse_boat_answer("July 3rd 2026", TODAY).date == date(2026, 7, 3)
+    assert parse_boat_answer("3rd July 2026", TODAY).date == date(2026, 7, 3)
+
+
 def test_weekday_never_resolves_to_today():
     today = date(2026, 8, 11)
     answer = parse_boat_answer("tuesday", today)
@@ -192,6 +197,14 @@ def test_resolve_first_seat_prefers_later_dated_answer():
         1: BoatAnswer("last week", 3, date(2026, 8, 3)),
     }
     assert resolve_first_seat(answers, random.Random(1), {0: "Ari", 1: "Crendia"})[0] == 0
+
+
+def test_resolve_first_seat_orders_ordinal_date_before_later_date():
+    answers = {
+        0: parse_boat_answer("July 3rd 2026", TODAY),
+        1: parse_boat_answer("July 6, 2026", TODAY),
+    }
+    assert resolve_first_seat(answers, random.Random(1), {0: "Scott", 1: "Paxton"})[0] == 1
 
 
 def test_resolve_first_seat_draws_equal_answers_deterministically():

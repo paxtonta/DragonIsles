@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "dragonisles-bot"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["fastapi==0.115.6", "uvicorn==0.34.0"]
 
 [project.optional-dependencies]
 dev = ["black==24.10.0", "pytest==8.3.5", "ruff==0.6.9"]

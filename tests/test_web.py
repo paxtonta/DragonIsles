@@ -689,6 +689,62 @@ def test_browser_lets_human_choose_hand_limit_discards():
     assert all(card in human.hand for card in original_hand if card not in discarded)
 
 
+def test_versus_opponent_sees_public_challenge_without_controls():
+    session = WebSession("versus")
+    first, _ = session.game.state.players
+    session.action({"action": "boat_answer", "text": "today"}, seat=0)
+    session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
+    session.game.state.current_player = 0
+    encounter = Encounter("Visible", 1, 1, 1, 1)
+    session.game.state.encounters[0] = encounter
+    first.hand[:2] = [Card("red", 4), Card("red", 5)]
+
+    session.action(
+        {
+            "action": "attempt",
+            "encounter": encounter.id,
+            "method": "strike",
+            "cards": [0, 1],
+        },
+        seat=0,
+    )
+
+    first_state = session.state(0)
+    second_state = session.state(1)
+    assert first_state["challenge"] is not None
+    assert second_state["challenge"] is not None
+    assert first_state["challenge"]["mine"] is True
+    assert second_state["challenge"]["mine"] is False
+    assert second_state["challenge"]["cards"] == first_state["challenge"]["cards"]
+    assert second_state["hand"] != first_state["hand"]
+    assert isinstance(second_state["players"][0]["potions"], int)
+    with pytest.raises(ValueError, match="it is not your turn"):
+        session.action({"action": "resolve", "plus_two": False}, seat=1)
+
+
+def test_versus_opponent_sees_public_discard_activity():
+    session = WebSession("versus")
+    first, _ = session.game.state.players
+    first.hand.extend([Card("red", 1)] * (first.hand_limit + 1 - len(first.hand)))
+    session.game.discard_down(first)
+
+    first_state = session.state(0)
+    second_state = session.state(1)
+    assert first_state["discard"] == {
+        "count": 1,
+        "player": first.name,
+        "player_is_bot": False,
+        "mine": True,
+    }
+    assert second_state["discard"] == {
+        "count": 1,
+        "player": first.name,
+        "player_is_bot": False,
+        "mine": False,
+    }
+    assert second_state["hand"] != first_state["hand"]
+
+
 def test_free_potion_discard_does_not_end_human_turn():
     session = _ready_bot_session()
     _force_human_turn(session)
@@ -1008,7 +1064,7 @@ def test_web_preserves_boat_draft_across_refreshes():
 def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
     assert "S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` —" in HTML
     assert (
-        "${S.mode==='versus'&&!S.boat&&!S.human_turn&&S.opponent_name?`<div class=panel>Waiting for "
+        "${S.mode==='versus'&&!S.boat&&!S.human_turn&&S.opponent_name&&!S.challenge&&!S.discard?`<div class=panel>Waiting for "
         in HTML
     )
     assert "Waiting for ${esc(S.opponent_name)}…" in HTML

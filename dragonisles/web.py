@@ -828,12 +828,6 @@ class WebSession:
                 player_count=len(self.game.state.players),
             )
             challenge = self.pending_challenge
-            if (
-                challenge is not None
-                and self.mode == "versus"
-                and challenge.player is not player
-            ):
-                challenge = None
             prepare = self.pending_prepare
             if (
                 prepare is not None
@@ -856,12 +850,6 @@ class WebSession:
             ):
                 treasure = None
             discard = self.game.pending_discard
-            if (
-                discard is not None
-                and self.mode == "versus"
-                and discard.player is not player
-            ):
-                discard = None
             state = {
                 "turn": self.game.state.turn_number,
                 "revision": self.revision,
@@ -884,7 +872,7 @@ class WebSession:
                         "drawn": list(prepare["drawn"]),
                     }
                 ),
-                "challenge": serialize_challenge(challenge),
+                "challenge": serialize_challenge(challenge, viewer=player),
                 "discard_top": (
                     serialize_card(self.game.state.deck.discard_pile[-1], -1)
                     if self.game.state.deck.discard_pile
@@ -920,6 +908,11 @@ class WebSession:
                         "player": discard.player.name,
                         "player_is_bot": discard.player.is_bot,
                     }
+                    | (
+                        {"mine": discard.player is player}
+                        if self.mode == "versus"
+                        else {}
+                    )
                 ),
                 "tokens": {
                     "potions": self.game.potion_supply_count,
@@ -1011,7 +1004,9 @@ def serialize_treasure(treasure: Treasure) -> dict[str, str]:
     }
 
 
-def serialize_challenge(progress: ChallengeProgress | None) -> dict[str, Any] | None:
+def serialize_challenge(
+    progress: ChallengeProgress | None, *, viewer: Player | None = None
+) -> dict[str, Any] | None:
     if progress is None:
         return None
     if progress.resolved:
@@ -1023,6 +1018,7 @@ def serialize_challenge(progress: ChallengeProgress | None) -> dict[str, Any] | 
     return {
         "player": progress.player.name,
         "player_is_bot": progress.player.is_bot,
+        "mine": viewer is None or progress.player is viewer,
         "cards": [
             serialize_card(card, index)
             for index, card in enumerate(progress.decision.combo)
@@ -1167,6 +1163,7 @@ function challengeHtml(){let c=S.challenge;if(S.game_over||!c)return '';
  let dice=c.rolls.map((r,i)=>`<span class="die ${rerollPicks.includes(i)?'picked':''}" onclick="toggleDie(${i})">${r}</span>`).join('');
  let shownCards=c.cards.map(cardHtml).join(', ');
  let head=`<b>${esc(c.player)}'s Challenge</b>: ${shownCards}<br><b>${esc(c.encounter)}</b> by ${esc(c.method)} — target ${c.target}<br>Dice: ${dice}<br>Skill bonus +${c.skill_bonus} · total <b>${c.total}</b>${c.shortfall?` · short by ${c.shortfall}`:' · meets target'}`;
+ if(!c.mine)return `<div class=panel>${head}<br><span class=muted>${esc(c.player)} is resolving this Challenge…</span></div>`;
  if(c.player_is_bot)return `<div class=panel>${head}<br><span class=muted>The bot is resolving this Challenge…</span></div>`;
  if(c.phase==='reroll')return `<div class=panel>${head}<br><span class=muted>Pick up to ${c.reroll_limit} die/dice to reroll, then continue.</span><br><button onclick="post('/api/action',{action:'reroll',indices:rerollPicks})">Reroll selected</button><button onclick="rerollPicks=[];post('/api/action',{action:'reroll',indices:[]})">Keep this roll</button></div>`;
  if(c.phase==='resolve'){let plus=c.plus_two?`<button onclick="post('/api/action',{action:'use_plus_two'})">Use +2 potion</button>`:'';
@@ -1190,7 +1187,7 @@ function treasureChoiceHtml(){let t=S.treasure;if(S.game_over||!t)return '';
  return `<div class=panel><b>Treasure reward</b> — keep one of the two drawn treasures:<br>${choices}</div>`}
 
 function discardHtml(){let d=S.discard;if(S.game_over||!d)return '';
- if(d.player_is_bot)return `<div class=panel><b>${esc(d.player)} is discarding</b> — ${d.count} card(s) remaining.</div>`;
+ if(d.player_is_bot||!d.mine)return `<div class=panel><b>${esc(d.player)} is discarding</b> — ${d.count} card(s) remaining.</div>`;
  let picks=S.hand.map(c=>{let id=`discard-card-${c.index}`;return `<label for="${id}"><input id="${id}" type=checkbox ${discardPicks.includes(c.index)?'checked':''} onchange="toggleDiscard(${c.index})"> ${cardHtml(c)}</label>`}).join('');
  return `<div class=panel><b>Choose discard</b> — select one card (${d.count} remaining):<br><div class=hand>${picks}</div><button onclick="post('/api/action',{action:'discard',cards:discardPicks})" ${discardPicks.length!==1?'disabled':''}>Discard selected</button></div>`}
 
@@ -1219,7 +1216,7 @@ function render(){
  <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
  ${firstTurnHtml()}
  ${boatHtml()}
- ${S.mode==='versus'&&!S.boat&&!S.human_turn&&S.opponent_name?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
+ ${S.mode==='versus'&&!S.boat&&!S.human_turn&&S.opponent_name&&!S.challenge&&!S.discard?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
  ${gameOverHtml()}
  <h2>Encounters</h2><div class=encounters>${encounterHtml()}</div>
  ${challengeHtml()}${treasureChoiceHtml()}${traderHtml()}${discardHtml()}${prepareHtml()}

@@ -1121,7 +1121,7 @@ main{max-width:1250px;margin:auto;padding:20px}.grid{display:grid;grid-template-
 .card:hover{border-color:#f5c451}.card.selected{outline:3px solid #f5c451}
 .encounter{cursor:pointer}.muted{color:var(--muted)}.sea{color:#7bd3ff}.land{color:#a8e6a3}
 button{background:var(--control);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin:4px;cursor:pointer}button:disabled{opacity:.35;cursor:not-allowed}
-.hand{display:flex;flex-wrap:wrap;gap:8px}.hand label{padding:8px;background:var(--control);border-radius:6px}.adventure-card{font-weight:700}.suit-red{color:#ef6b73}.suit-yellow{color:#e5c84b}.suit-green{color:#62c174}.suit-blue{color:#62a7ef}.suit-purple{color:#c08af2}.treasure-card{font-weight:700;cursor:help;text-decoration:underline dotted;text-underline-offset:3px}.treasure-orange{color:#f0a34b}.treasure-green{color:#62c174}.panel{background:var(--panel);padding:14px;border-radius:10px;margin-bottom:14px}
+.hand{display:flex;flex-wrap:wrap;gap:8px}.hand label{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px;background:var(--control);border-radius:6px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.hand input[type="checkbox"]{width:22px;height:22px;margin:0;flex:none;accent-color:#2f6b4f}.adventure-card{font-weight:700}.suit-red{color:#ef6b73}.suit-yellow{color:#e5c84b}.suit-green{color:#62c174}.suit-blue{color:#62a7ef}.suit-purple{color:#c08af2}.treasure-card{font-weight:700;cursor:help;text-decoration:underline dotted;text-underline-offset:3px}.treasure-orange{color:#f0a34b}.treasure-green{color:#62c174}.panel{background:var(--panel);padding:14px;border-radius:10px;margin-bottom:14px}
 :root[data-theme="light"] .suit-red{color:#b4232d}:root[data-theme="light"] .suit-yellow{color:#8a6500}:root[data-theme="light"] .suit-green{color:#287a35}:root[data-theme="light"] .suit-blue{color:#1f5f9e}:root[data-theme="light"] .suit-purple{color:#7b3fa3}:root[data-theme="light"] .treasure-orange{color:#a85d00}:root[data-theme="light"] .treasure-green{color:#287a35}
 .die{display:inline-block;min-width:34px;text-align:center;padding:6px 8px;margin:3px;background:var(--control);border-radius:6px}
 .die.picked{background:#e7b94f;color:#101827;font-weight:700}
@@ -1153,7 +1153,7 @@ function encounterHtml(){return S.encounters.map((c,i)=>`<div class="card encoun
 
 function cardHtml(c){return `<span class="adventure-card ${c.suit?'suit-'+c.suit:''}">${esc(c.label)}</span>`}
 function treasureHtml(t){return `<span class="treasure-card treasure-${esc(t.color)}" title="${esc(t.description)}">${esc(t.label)}</span>`}
-function handHtml(){let disabled=S.game_over||S.boat||S.first_turn||(!S.human_turn&&S.mode==='versus')?'disabled':'';return S.hand.map(c=>`<label><input type=checkbox ${cards.includes(c.index)?'checked':''} ${disabled} value=${c.index} onchange="toggleCard(${c.index})"> ${cardHtml(c)}</label>`).join('')}
+function handHtml(){let disabled=S.game_over||S.boat||S.first_turn||(!S.human_turn&&S.mode==='versus')?'disabled':'';return S.hand.map(c=>{let id=`hand-card-${c.index}`;return `<label for="${id}"><input id="${id}" type=checkbox ${cards.includes(c.index)?'checked':''} ${disabled} value=${c.index} onchange="toggleCard(${c.index})"> ${cardHtml(c)}</label>`}).join('')}
 
 function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
  let prompt=S.boat.stage==='time'?'You both last travelled by boat on the same day. Roughly what time of day was that? Pacific unless you add a zone — e.g. "9am", "2:30pm", "14:00", "17:00 et".':'When did you last travel by boat? The more recent answer takes the first turn.';
@@ -1191,7 +1191,7 @@ function treasureChoiceHtml(){let t=S.treasure;if(S.game_over||!t)return '';
 
 function discardHtml(){let d=S.discard;if(S.game_over||!d)return '';
  if(d.player_is_bot)return `<div class=panel><b>${esc(d.player)} is discarding</b> — ${d.count} card(s) remaining.</div>`;
- let picks=S.hand.map(c=>`<label><input type=checkbox ${discardPicks.includes(c.index)?'checked':''} onchange="toggleDiscard(${c.index})"> ${cardHtml(c)}</label>`).join('');
+ let picks=S.hand.map(c=>{let id=`discard-card-${c.index}`;return `<label for="${id}"><input id="${id}" type=checkbox ${discardPicks.includes(c.index)?'checked':''} onchange="toggleDiscard(${c.index})"> ${cardHtml(c)}</label>`}).join('');
  return `<div class=panel><b>Choose discard</b> — select one card (${d.count} remaining):<br><div class=hand>${picks}</div><button onclick="post('/api/action',{action:'discard',cards:discardPicks})" ${discardPicks.length!==1?'disabled':''}>Discard selected</button></div>`}
 
 function playerForSeat(seat){return S.players.find(p=>p.seat===seat)}

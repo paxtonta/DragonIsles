@@ -8,6 +8,7 @@ import os
 import random
 import secrets
 import threading
+import time
 from argparse import ArgumentParser
 from collections.abc import Sequence
 from datetime import date
@@ -1279,7 +1280,26 @@ setInterval(()=>{if(S&&(!S.mode||S.mode==='bot'||S.human_turn)&&!S.challenge&&!S
 SESSION = WebSession()
 PASSPHRASE: str | None = None
 AUTH_SESSIONS: dict[str, int] = {}
+AUTH_LAST_SEEN: dict[str, float] = {}
+AUTH_SESSION_TIMEOUT = 30.0
 SECURE_COOKIE = False
+
+
+def _prune_auth_sessions(now: float | None = None) -> None:
+    current = time.monotonic() if now is None else now
+    stale = [
+        token
+        for token, seat in AUTH_SESSIONS.items()
+        if current - AUTH_LAST_SEEN.get(token, current) > AUTH_SESSION_TIMEOUT
+        or seat not in (0, 1)
+    ]
+    for token in stale:
+        AUTH_SESSIONS.pop(token, None)
+        AUTH_LAST_SEEN.pop(token, None)
+
+
+def _touch_auth_session(token: str) -> None:
+    AUTH_LAST_SEEN[token] = time.monotonic()
 
 
 def _clean_text(value: Any, limit: int) -> str:
@@ -1322,10 +1342,15 @@ def configure(
         loaded = load_state(state_path) if state_path is not None else None
         SESSION.state_path = None
         AUTH_SESSIONS.clear()
+        AUTH_LAST_SEEN.clear()
         if loaded is not None and loaded[0] == mode:
             SESSION.state_path = state_path
             SESSION.restore(mode, loaded[1], loaded[3], loaded[4])
             AUTH_SESSIONS.update(loaded[2])
+            now = time.monotonic()
+            AUTH_LAST_SEEN.update(
+                {token: now for token in AUTH_SESSIONS}
+            )
         else:
             SESSION.seat_names = {}
             SESSION.new_game(mode)
@@ -1348,7 +1373,11 @@ class Handler(BaseHTTPRequestHandler):
         if token is None:
             return None
         with SESSION.lock:
-            return AUTH_SESSIONS.get(token)
+            _prune_auth_sessions()
+            seat = AUTH_SESSIONS.get(token)
+            if seat is not None:
+                _touch_auth_session(token)
+            return seat
 
     def _require_seat(self) -> int | None:
         seat = self._seat()
@@ -1418,6 +1447,7 @@ class Handler(BaseHTTPRequestHandler):
         token = self._cookie_token()
         name = _clean_name(payload.get("name"))
         with SESSION.lock:
+            _prune_auth_sessions()
             seat = AUTH_SESSIONS.get(token) if token is not None else None
             if seat is None:
                 if SESSION.mode == "versus":
@@ -1437,6 +1467,7 @@ class Handler(BaseHTTPRequestHandler):
                     seat = 0
                 token = secrets.token_urlsafe(32)
                 AUTH_SESSIONS[token] = seat
+            _touch_auth_session(token)
             if SESSION.mode == "versus" and name is not None:
                 SESSION.set_seat_name(seat, name)
             else:

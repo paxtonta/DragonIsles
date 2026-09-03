@@ -8,3 +8,6 @@ __pycache__/
 *.zip
 *.mp4
 *.log
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo

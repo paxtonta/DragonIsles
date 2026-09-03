@@ -117,7 +117,9 @@ export default function GameClient() {
   const busy = Boolean(state.challenge || state.prepare || state.trader || state.treasure || state.discard);
   const actionDisabled = state.game_over || Boolean(state.boat) || Boolean(state.first_turn) || (state.mode === "versus" && !state.human_turn);
   const player = state.players.find(item => item.seat === state.seat);
-  const titleStatus = state.first_turn ? "" : `Turn ${state.turn} — ${state.game_over ? "Game over" : state.human_turn ? "Your turn" : state.mode === "versus" ? `Waiting for ${state.opponent_name || "opponent"}…` : "Bot turn"}`;
+  const opponentLabel = state.opponent_name || "no one yet";
+  const waitingLabel = state.opponent_name ? `Waiting for ${state.opponent_name}…` : "No other player has joined yet.";
+  const titleStatus = state.first_turn ? "" : `Turn ${state.turn} — ${state.game_over ? "Game over" : state.human_turn ? "Your turn" : state.mode === "versus" ? waitingLabel : "Bot turn"}`;
   const toggleCard = (index: number) => setSelectedCards(cards => cards.includes(index) ? cards.filter(item => item !== index) : [...cards, index]);
   const toggleDiscard = (index: number) => setDiscardCards(cards => cards.includes(index) ? cards.filter(item => item !== index) : [...cards, index]);
   const challenge = state.challenge;
@@ -128,15 +130,15 @@ export default function GameClient() {
     <h1>DragonIsles <Button variant="secondary" onClick={() => document.documentElement.classList.toggle("dark")}>Toggle theme</Button><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button></h1>
     {error && <p role="alert">{error}</p>}
     <div className="grid"><section>
-      <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {state.seat_name} · {state.mode === "versus" ? "vs Friend" : "vs Bot"}</span>
+      <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {state.seat_name} · {state.mode === "versus" ? `vs ${opponentLabel}` : "vs Bot"}</span>
         {state.mode === "versus" && <><br /><span className="muted">This private game is for whoever has the link and passphrase.</span></>}
         {(state.boat_result || state.first_turn_result) && <><br /><span className="muted">{state.boat_result || state.first_turn_result}</span></>}
         <br />Trophies: {trophies.map(([key, value]) => <span key={key} title={`${key === "all" ? "All types" : key} trophy: ${key === "all" ? 5 : 3} Victory Points`}>{key}: {Array.isArray(value) ? value.join(", ") : value || "none"} · </span>)}<br /><span className="muted">Die faces: {state.die_faces.join(", ")}</span>
       </CardContent></Card>
       {state.mode === "bot" && state.first_turn && <Card><CardContent><b>Who goes first?</b><br /><Button onClick={() => void post({ action: "first_turn", choice: "me" })}>I go first</Button><Button onClick={() => void post({ action: "first_turn", choice: "bot" })}>Bot goes first</Button></CardContent></Card>}
       {state.boat && <Card><CardContent><b>{state.boat.stage === "time" ? "Roughly what time of day did you last travel by boat?" : "When did you last travel by boat?"}</b>
-        {state.boat.waiting ? <p>Answer submitted: {state.boat.mine}. Waiting for {state.opponent_name}…</p> : <><Input value={boatText || state.boat.mine || ""} onChange={event => setBoatText(event.target.value)} /><Button onClick={() => void post({ action: state.boat?.stage === "time" ? "boat_time" : "boat_answer", text: boatText || state.boat?.mine || "" })}>Submit</Button></>}</CardContent></Card>}
-      {state.mode === "versus" && !state.boat && !state.human_turn && state.opponent_name && <Card><CardContent>Waiting for {state.opponent_name}…</CardContent></Card>}
+        {state.boat.waiting ? <p>Answer submitted: {state.boat.mine}. {waitingLabel}</p> : <><Input value={boatText || state.boat.mine || ""} onChange={event => setBoatText(event.target.value)} /><Button onClick={() => void post({ action: state.boat?.stage === "time" ? "boat_time" : "boat_answer", text: boatText || state.boat?.mine || "" })}>Submit</Button></>}</CardContent></Card>}
+      {state.mode === "versus" && !state.boat && !state.human_turn && <Card><CardContent>{waitingLabel}</CardContent></Card>}
       {state.game_over && <Card><CardHeader><CardTitle>Final scores</CardTitle></CardHeader><CardContent>{state.players.map(item => <div key={item.seat}>{item.name}: <b>{item.score} VP</b></div>)}</CardContent></Card>}
       <h2>Encounters</h2><div className="encounters">{state.encounters.map((encounter, index) =>
         <Card key={encounter.id} className={`encounter ${selectedEncounter === encounter.id ? "selected" : ""}`} onClick={() => !state.game_over && !actionDisabled && setSelectedEncounter(encounter.id)}>

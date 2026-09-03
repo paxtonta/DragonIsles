@@ -1154,7 +1154,7 @@ function handHtml(){let disabled=S.game_over||S.boat||S.first_turn||(!S.human_tu
 
 function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
  let prompt=S.boat.stage==='time'?'You both last travelled by boat on the same day. Roughly what time of day was that? Pacific unless you add a zone — e.g. "9am", "2:30pm", "14:00", "17:00 et".':'When did you last travel by boat? The more recent answer takes the first turn.';
- if(S.boat.waiting)return `<div class=panel><b>${prompt}</b><br>Your answer: ${esc(S.boat.mine)}<br><span class=muted>Waiting for ${esc(S.opponent_name)}'s answer…</span></div>`;
+ if(S.boat.waiting)return `<div class=panel><b>${prompt}</b><br>Your answer: ${esc(S.boat.mine)}<br><span class=muted>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}'s answer…`:'No other player has joined yet.'}</span></div>`;
  return `<div class=panel><b>${prompt}</b>${S.boat.message?`<br><span class=muted>${esc(S.boat.message)}</span>`:''}<br><input id=boat-answer type=text maxlength=60 value="${esc(boatDraft!==null?boatDraft:(S.boat.mine||''))}" oninput="boatDraft=this.value"><button onclick="submitBoat()">Submit</button></div>`}
 function submitBoat(){let input=document.getElementById('boat-answer');post('/api/action',{action:S.boat.stage==='time'?'boat_time':'boat_answer',text:input.value})}
 function firstTurnHtml(){if(S.mode!=='bot'||!S.first_turn)return '';
@@ -1214,10 +1214,10 @@ function render(){
  let market=S.market.map(cardHtml).join(', ');
  let tokens=S.tokens?`<div class=panel><b>Token supply</b><br>Potions left: ${S.tokens.potions} · Coins left: ${S.tokens.coins.map(c=>c[1]+'×'+c[0]).join(', ')}</div>`:'';
  document.getElementById('app').innerHTML=`<div class=grid><section>
- <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?`Waiting for ${esc(S.opponent_name)}…`:'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?'vs Friend':'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?(S.opponent_name?`Waiting for ${esc(S.opponent_name)}…`:'No other player has joined yet.'):'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?`vs ${esc(S.opponent_name||'no one yet')}`:'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
  ${firstTurnHtml()}
  ${boatHtml()}
- ${S.mode==='versus'&&!S.boat&&!S.human_turn&&S.opponent_name&&!S.challenge&&!S.discard?`<div class=panel>Waiting for ${esc(S.opponent_name)}…</div>`:''}
+ ${S.mode==='versus'&&!S.boat&&!S.human_turn&&!S.challenge&&!S.discard?`<div class=panel>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}…`:'No other player has joined yet.'}</div>`:''}
  ${gameOverHtml()}
  <h2>Encounters</h2><div class=encounters>${encounterHtml()}</div>
  ${challengeHtml()}${treasureChoiceHtml()}${traderHtml()}${discardHtml()}${prepareHtml()}

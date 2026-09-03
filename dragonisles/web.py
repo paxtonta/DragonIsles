@@ -478,11 +478,17 @@ class WebSession:
                             for index, answer in self.boat_times.items()
                             if answer.start != answer.end
                         ]
+                        if not vague_seats:
+                            self.boat_times.clear()
+                            self.boat_time_followups = {
+                                0: TIME_FOLLOWUP,
+                                1: TIME_FOLLOWUP,
+                            }
                         for index in vague_seats:
                             del self.boat_times[index]
                             self.boat_time_followups[index] = TIME_FOLLOWUP
                         self.revision += 1
-                        if seat in vague_seats:
+                        if seat in vague_seats or not vague_seats:
                             self._save()
                             raise ValueError(TIME_FOLLOWUP)
                         return

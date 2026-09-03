@@ -405,8 +405,4 @@ def resolve_boat_times(
         return 1, explanation + f"{names[1]} travelled later that day and goes first."
     if first.start != first.end or second.start != second.end:
         return None
-    winner = 0
-    return (
-        winner,
-        explanation + f"both at the same time, so {names[winner]} goes first by seat order.",
-    )
+    return None

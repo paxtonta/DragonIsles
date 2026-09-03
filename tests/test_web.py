@@ -16,6 +16,8 @@ from dragonisles.engine import ChallengeProgress, Player
 from dragonisles.potions import DRAW_TWO, PLUS_TWO, PotionToken
 from dragonisles.treasures import Treasure
 from dragonisles.web import (
+    AUTH_LAST_SEEN,
+    AUTH_SESSION_TIMEOUT,
     HTML,
     Handler,
     LOGIN_HTML,
@@ -1566,6 +1568,48 @@ def test_passphrase_assigns_two_seats_and_rejects_a_third():
         )
         assert status == 403
         assert body == {"error": "both seats are taken"}
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)
+
+
+def test_stale_closed_seat_can_be_reclaimed():
+    configure("versus", "test123")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _, _, _ = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Alice"},
+        )
+
+        _, headers, _ = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Bob"},
+        )
+        second_cookie = next(value for key, value in headers if key == "Set-Cookie")
+        second_token = second_cookie.split("=", 1)[1].split(";", 1)[0]
+        AUTH_LAST_SEEN[second_token] -= AUTH_SESSION_TIMEOUT + 1
+
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Charlie"},
+        )
+
+        assert status == 200
+        assert body == {"seat": 1}
+        assert [player["name"] for player in SESSION.state(0)["players"]] == [
+            "Alice",
+            "Charlie",
+        ]
     finally:
         server.shutdown()
         server.server_close()

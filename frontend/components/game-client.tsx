@@ -92,12 +92,18 @@ export default function GameClient() {
     return () => window.clearInterval(timer);
   }, [load, state]);
 
-  const post = async (body: Record<string, unknown>) => {
+  const post = useCallback(async (body: Record<string, unknown>) => {
     try {
       const next = await api("/api/action", body) as State;
       setState(next); setSelectedEncounter(null); setSelectedCards([]); setDiscardCards([]); setRerollDice([]); setMethod(null); setOptions(null); setError("");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Action failed."); await load(); }
-  };
+  }, [load]);
+
+  useEffect(() => {
+    if (!state?.discard?.player_is_bot) return;
+    const timer = window.setTimeout(() => { void post({ action: "continue_bot_discard", revision: state.revision }); }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [post, state]);
 
   useEffect(() => {
     if (!state || !selectedEncounter || !selectedCards.length || !state.human_turn) { setOptions(null); return; }

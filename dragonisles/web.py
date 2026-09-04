@@ -1134,7 +1134,7 @@ button.secondary{background:#4d6180;color:#e8eef7}.gap{display:inline-block;widt
 pre{white-space:pre-wrap}.events{max-height:180px;overflow:auto}
 @media(max-width:800px){.grid{grid-template-columns:1fr}.encounters{grid-template-columns:1fr}}
 </style></head>
-<body><main><h1>DragonIsles <button class=secondary id=theme-toggle onclick="toggleTheme()">Use light mode</button> <button class=secondary type=button onclick="newGame()">New game</button></h1><div id="app">Loading…</div></main>
+<body><main><h1>DragonIsles <button class=secondary id=theme-toggle onclick="toggleTheme()">Toggle theme</button> <button class=secondary type=button onclick="newGame()">New game</button></h1><div id="app">Loading…</div></main>
 <script>
 let S=null, selected=null, method=null, cards=[], rerollPicks=[], discardPicks=[], boatDraft=null, botTimer=null, requestInFlight=false, stateRevision=0, stateRequest=0;
 document.addEventListener('click',e=>{
@@ -1145,7 +1145,7 @@ document.addEventListener('click',e=>{
   id:target.id||null
  }))
 });
-function setTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('dragonisles-theme',theme);document.getElementById('theme-toggle').textContent=theme==='dark'?'Use light mode':'Use dark mode'}
+function setTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('dragonisles-theme',theme);document.getElementById('theme-toggle').textContent='Toggle theme'}
 function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
 function newGame(){post('/api/action',{action:'new_game'})}
 async function get(){let request=++stateRequest;let next=await (await fetch('/api/state')).json();if(request!==stateRequest)return;S=next;stateRevision++;render()}

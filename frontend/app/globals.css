@@ -47,4 +47,9 @@ h1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .step { display: inline-block; padding: 3px 8px; margin: 3px; border-radius: 6px; background: var(--control); font-size: 14px; }
 .step.reached { background: var(--success); color: white; }
 .events { max-height: 180px; overflow: auto; white-space: pre-wrap; }
+.rulebook-backdrop { position: fixed; inset: 0; z-index: 10; overflow: auto; padding: 24px; background: rgb(23 35 53 / 55%); }
+.rulebook-dialog { max-width: 850px; margin: auto; }
+.rulebook-section { border-top: 1px solid var(--border); padding: 10px 0; }
+.rulebook-section h3 { margin: 0 0 4px; }
+.rulebook-section p { margin: 0; }
 @media (max-width: 800px) { .grid, .encounters { grid-template-columns: 1fr; } main { padding: 12px; } }

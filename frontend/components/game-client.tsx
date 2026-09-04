@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Rulebook } from "./rulebook";
 
 type AdventureCard = { index: number; label: string; suit: string | null; rank: number | null; wild: boolean };
 type Treasure = { label: string; color: string; description: string };
@@ -23,12 +24,6 @@ type State = {
   boat?: Boat | null; boat_result?: string | null; first_turn?: { pending: boolean } | null; first_turn_result?: string | null;
 };
 type Options = Record<"sneak" | "steal" | "strike", { enabled: boolean; reason: string }>;
-
-const methodDescriptions: Record<"sneak" | "steal" | "strike", string> = {
-  sneak: "Sneak: use matching cards to quietly overcome the encounter.",
-  steal: "Steal: use cards to take the encounter's treasure or reward.",
-  strike: "Strike: use cards to defeat the encounter through force.",
-};
 
 const api = async (path: string, body?: Record<string, unknown>) => {
   const response = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
@@ -127,7 +122,7 @@ export default function GameClient() {
   const trophies = Object.entries(state.trophies);
 
   return <main>
-    <h1>DragonIsles <Button variant="secondary" onClick={() => document.documentElement.classList.toggle("dark")}>Toggle theme</Button><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button></h1>
+    <h1>DragonIsles <Button variant="secondary" onClick={() => document.documentElement.classList.toggle("dark")}>Toggle theme</Button><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button><Rulebook mode={state.mode} /></h1>
     {error && <p role="alert">{error}</p>}
     <div className="grid"><section>
       <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {state.seat_name} · {state.mode === "versus" ? `vs ${opponentLabel}` : "vs Bot"}</span>
@@ -155,7 +150,7 @@ export default function GameClient() {
       {state.treasure && <Card><CardContent><b>Treasure reward</b> — keep one:<br />{state.treasure.treasures.map((treasure, index) => <Button key={index} onClick={() => void post({ action: "treasure_keep", treasure: index })}>Keep <TreasureFace treasure={treasure} /></Button>)}</CardContent></Card>}
       {state.discard && <Card><CardContent>{state.discard.player_is_bot ? <><b>{state.discard.player} is discarding</b> — {state.discard.count} remaining.</> : <><b>Choose discard</b> — {state.discard.count} remaining:<div className="hand">{state.hand.map(card => <label className="hand-label" key={card.index}><input type="checkbox" checked={discardCards.includes(card.index)} onChange={() => toggleDiscard(card.index)} /><CardFace card={card} /></label>)}</div><Button disabled={discardCards.length !== 1} onClick={() => void post({ action: "discard", cards: discardCards })}>Discard selected</Button></>}</CardContent></Card>}
       <h2>Your hand</h2><div className="hand">{state.hand.map(card => <label className="hand-label" htmlFor={`hand-${card.index}`} key={card.index}><input id={`hand-${card.index}`} type="checkbox" checked={selectedCards.includes(card.index)} disabled={actionDisabled} onChange={() => toggleCard(card.index)} /><CardFace card={card} /></label>)}</div>
-      <Card><CardContent><span className="muted">Potions: {Array.isArray(player?.potions) ? player.potions.join(", ") || "none" : player?.potions}</span><br /><b>Methods:</b> <span className="muted">Sneak, Steal, and Strike are three different ways to challenge an encounter.</span><br />{(["sneak", "steal", "strike"] as const).map(candidate => <span key={candidate}><Button disabled={!selectedEncounter || !options?.[candidate].enabled || busy || actionDisabled} title={`${methodDescriptions[candidate]}${options?.[candidate].reason ? ` ${options[candidate].reason}` : ""}`} variant={method === candidate ? "secondary" : "default"} onClick={() => setMethod(candidate)}>{candidate}</Button> <span className="sr-only">{methodDescriptions[candidate]}</span></span>)}<br />
+      <Card><CardContent><span className="muted">Potions: {Array.isArray(player?.potions) ? player.potions.join(", ") || "none" : player?.potions}</span><br /><b>Methods:</b> {(["sneak", "steal", "strike"] as const).map(candidate => <span key={candidate}><Button disabled={!selectedEncounter || !options?.[candidate].enabled || busy || actionDisabled} variant={method === candidate ? "secondary" : "default"} onClick={() => setMethod(candidate)}>{candidate}</Button></span>)}<br />
         <Button disabled={!selectedEncounter || !method || busy || actionDisabled} onClick={() => void post({ action: "attempt", encounter: selectedEncounter, method, cards: selectedCards })}>Challenge</Button><Button variant="secondary" disabled={busy || actionDisabled} onClick={() => void post({ action: "prepare_start" })}>Prepare instead</Button></CardContent></Card>
       <Card><CardHeader><CardTitle>Skill ladders</CardTitle></CardHeader><CardContent>{Object.entries(state.ladders).map(([track, ladder]) => <div key={track}><b>{track}</b> <span className="muted">level {ladder.level}/{ladder.steps.length}</span><br />{ladder.steps.map((step, index) => <span className={`step ${step.reached ? "reached" : ""}`} key={index}>{index + 1}. +{step.bonus}{step.reward ? ` → ${step.reward}` : ""}</span>)}</div>)}</CardContent></Card>
       <Card><CardHeader><CardTitle>Events</CardTitle></CardHeader><CardContent><pre className="events">{state.events.join("\n")}</pre></CardContent></Card>

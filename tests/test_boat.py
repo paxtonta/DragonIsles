@@ -207,17 +207,16 @@ def test_resolve_first_seat_orders_ordinal_date_before_later_date():
     assert resolve_first_seat(answers, random.Random(1), {0: "Scott", 1: "Paxton"})[0] == 1
 
 
-def test_resolve_first_seat_draws_equal_answers_deterministically():
+def test_resolve_first_seat_uses_seat_order_for_equal_never_answers():
     answers = {
         0: BoatAnswer("never", 1, None),
         1: BoatAnswer("nope", 1, None),
     }
-    expected = random.Random(22).randrange(2)
     winner, explanation = resolve_first_seat(
         answers, random.Random(22), {0: "Ari", 1: "Crendia"}
     )
-    assert winner == expected
-    assert "drawn at random" in explanation
+    assert winner == 0
+    assert "Ari goes first by seat order." in explanation
 
 
 def test_resolve_first_seat_uses_later_same_day_time():
@@ -239,7 +238,7 @@ def test_resolve_first_seat_uses_later_same_day_time():
     )
 
 
-def test_resolve_first_seat_draws_equal_same_day_times():
+def test_resolve_first_seat_reasks_for_equal_same_day_times():
     answers = {
         0: BoatAnswer("6 Aug", 3, TODAY),
         1: BoatAnswer("6 Aug", 3, TODAY),
@@ -248,12 +247,7 @@ def test_resolve_first_seat_draws_equal_same_day_times():
         0: BoatTime("9am", 540, 540),
         1: BoatTime("9am", 540, 540),
     }
-    expected = random.Random(22).randrange(2)
-    winner, explanation = resolve_first_seat(
+    result = resolve_first_seat(
         answers, random.Random(22), {0: "Crendia", 1: "Ari"}, times=times
     )
-    assert winner == expected
-    assert (
-        'Crendia: "6 Aug" at 9am · Ari: "6 Aug" at 9am — '
-        "both at the same time, so the first turn was drawn at random."
-    ) == explanation
+    assert result is None

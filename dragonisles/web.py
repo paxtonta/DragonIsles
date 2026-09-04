@@ -479,11 +479,17 @@ class WebSession:
                             for index, answer in self.boat_times.items()
                             if answer.start != answer.end
                         ]
+                        if not vague_seats:
+                            self.boat_times.clear()
+                            self.boat_time_followups = {
+                                0: TIME_FOLLOWUP,
+                                1: TIME_FOLLOWUP,
+                            }
                         for index in vague_seats:
                             del self.boat_times[index]
                             self.boat_time_followups[index] = TIME_FOLLOWUP
                         self.revision += 1
-                        if seat in vague_seats:
+                        if seat in vague_seats or not vague_seats:
                             self._save()
                             raise ValueError(TIME_FOLLOWUP)
                         return
@@ -1214,7 +1220,7 @@ function render(){
  let market=S.market.map(cardHtml).join(', ');
  let tokens=S.tokens?`<div class=panel><b>Token supply</b><br>Potions left: ${S.tokens.potions} · Coins left: ${S.tokens.coins.map(c=>c[1]+'×'+c[0]).join(', ')}</div>`:'';
  document.getElementById('app').innerHTML=`<div class=grid><section>
- <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?(S.opponent_name?`Waiting for ${esc(S.opponent_name)}…`:'No other player has joined yet.'):'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?`vs ${esc(S.opponent_name||'no one yet')}`:'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${esc(Object.entries(S.trophies).map(x=>x[0]+': '+(x[1]||'none')).join(' · '))}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?(S.opponent_name?`Waiting for ${esc(S.opponent_name)}…`:'No other player has joined yet.'):'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?`vs ${esc(S.opponent_name||'no one yet')}`:'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${Object.entries(S.trophies).map(([kind,owner])=>`<span title="${esc(kind)} trophy: ${kind==='all'?5:3} VP">${esc(kind)}: ${esc(owner||'none')}</span>`).join(' · ')}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
  ${firstTurnHtml()}
  ${boatHtml()}
  ${S.mode==='versus'&&!S.boat&&!S.human_turn&&!S.challenge&&!S.discard?`<div class=panel>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}…`:'No other player has joined yet.'}</div>`:''}

@@ -130,6 +130,10 @@ def test_player_panels_render_character_abilities():
     assert "esc(p.ability)" in HTML
 
 
+def test_trophy_names_show_point_values_on_hover():
+    assert 'title="${esc(kind)} trophy: ${kind===\'all\'?5:3} VP"' in HTML
+
+
 def test_web_new_game_button_resets_the_session():
     assert "New game" in HTML
     session = _ready_bot_session()
@@ -1424,14 +1428,16 @@ def test_versus_non_overlapping_vague_times_choose_later_range():
     assert "travelled later that day" in session.state(0)["boat_result"]
 
 
-def test_versus_exact_equal_times_flip_and_both_never_skip_time_round():
+def test_versus_exact_equal_times_reask_and_both_never_skip_time_round():
     session = WebSession("versus")
     session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
     session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
     session.action({"action": "boat_time", "text": "9am"}, seat=0)
-    session.action({"action": "boat_time", "text": "9am"}, seat=1)
-    assert session.state(0)["boat"] is None
-    assert "both at the same time" in session.state(0)["boat_result"]
+    with pytest.raises(ValueError, match="Give a clock time"):
+        session.action({"action": "boat_time", "text": "9am"}, seat=1)
+    assert session.state(0)["boat"]["answered"] is False
+    assert session.state(1)["boat"]["answered"] is False
+    assert session.state(0)["boat"]["message"]
 
     never = WebSession("versus")
     never.action({"action": "boat_answer", "text": "never"}, seat=0)

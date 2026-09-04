@@ -381,10 +381,10 @@ def resolve_first_seat(
         )
     if times is not None:
         return resolve_boat_times(answers, times, rng, names)
-    winner = rng.randrange(2)
+    winner = 0
     return (
         winner,
-        explanation + "neither answer was more recent, so the first turn was drawn at random.",
+        explanation + f"neither answer was more recent, so {names[winner]} goes first by seat order.",
     )
 
 
@@ -405,8 +405,4 @@ def resolve_boat_times(
         return 1, explanation + f"{names[1]} travelled later that day and goes first."
     if first.start != first.end or second.start != second.end:
         return None
-    winner = rng.randrange(2)
-    return (
-        winner,
-        explanation + "both at the same time, so the first turn was drawn at random.",
-    )
+    return None

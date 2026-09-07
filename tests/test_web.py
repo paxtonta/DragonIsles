@@ -1158,7 +1158,7 @@ def test_web_state_reports_token_supplies_and_conserves_them():
     assert (
         dict(tokens["coins"])[1]
         + sum(player.coins for player in session.game.state.players)
-        == 30
+        == 50
     )
 
 

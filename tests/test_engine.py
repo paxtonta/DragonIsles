@@ -911,20 +911,20 @@ def test_hand_limit_discards_immediately():
     assert len(player.hand) == player.hand_limit == 8
 
 
-def test_coin_supply_exchanges_denominations_before_taking_from_opponent():
+def test_coin_supply_uses_fifty_one_value_tokens_before_taking_from_opponent():
     game = Game(
         encounters(),
         characters=[CHARACTERS["Monk"], CHARACTERS["Pirate"]],
     )
     human, bot = game.state.players
-    game._coin_supply = {1: 0, 5: 1, 10: 0}
+    assert game.coin_supply_counts == {1: 50}
 
     assert game.gain_coin(human)
     assert human.coins == 1
     assert bot.coins == 0
-    assert game._coin_supply == {1: 4, 5: 0, 10: 0}
+    assert game._coin_supply == {1: 49}
 
-    game._coin_supply = {1: 0, 5: 0, 10: 0}
+    game._coin_supply = {1: 0}
     bot.coins = 1
     assert game.gain_coin(human)
     assert human.coins == 2

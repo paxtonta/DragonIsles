@@ -52,7 +52,7 @@ class RulesConfig:
     market_refill_timing: str = "end_of_prepare"
     deck_factory: Callable[[], AdventurerDeck] = AdventurerDeck
     potion_supply_factory: PotionSupplyFactory = default_potion_supply
-    coin_token_counts: tuple[tuple[int, int], ...] = ((1, 30), (5, 10), (10, 10))
+    coin_token_counts: tuple[tuple[int, int], ...] = ((1, 50),)
 
 
 @dataclass
@@ -536,13 +536,6 @@ class Game:
 
     def gain_coin(self, player: Player) -> bool:
         """Give one coin token, taking it from the opponent if supplies are empty."""
-        if self._coin_supply[1] == 0:
-            if self._coin_supply[5]:
-                self._coin_supply[5] -= 1
-                self._coin_supply[1] += 5
-            elif self._coin_supply[10]:
-                self._coin_supply[10] -= 1
-                self._coin_supply[1] += 10
         if self._coin_supply[1]:
             self._coin_supply[1] -= 1
             player.coins += 1

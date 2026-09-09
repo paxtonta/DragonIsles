@@ -15,7 +15,7 @@ type Ladder = { level: number; steps: { bonus: number; reward: string | null; re
 type Challenge = { player: string; player_is_bot: boolean; cards: AdventureCard[]; encounter: string; method: string; rolls: number[]; skill_bonus: number; total: number; target: number; shortfall: number; reroll_limit: number; rerolls_used: number; phase: "reroll" | "resolve" | "skill" | "done"; plus_two: boolean; tracks: string[]; result: boolean };
 type Boat = { stage: "date" | "time"; answered: boolean; mine: string | null; waiting: boolean; message?: string | null };
 type State = {
-  turn: number; revision: number; mode: "bot" | "versus"; seat: number; seat_name: string; opponent_name: string | null;
+  turn: number; revision: number; mode: "bot" | "versus" | "solo"; seat: number; seat_name: string; opponent_name: string | null;
   human_turn: boolean; die_faces: number[]; game_over: boolean; events: string[]; prepare: { remaining: number; drawn: AdventureCard[] } | null;
   challenge: Challenge | null; discard_top: AdventureCard | null; trader: { cards: AdventureCard[] } | null;
   treasure: { treasures: Treasure[] } | null; discard: { count: number; player: string; player_is_bot: boolean } | null;
@@ -161,7 +161,7 @@ export default function GameClient() {
     <h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} /><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button><Rulebook mode={state.mode} /></h1>
     {error && <p role="alert">{error}</p>}
     <div className="grid"><section>
-      <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {displayName(state.seat_name)} · {state.mode === "versus" ? `vs ${opponentLabel}` : `vs ${displayName("Bot")}`}</span>
+      <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {displayName(state.seat_name)}{state.mode === "versus" ? ` · vs ${opponentLabel}` : state.mode === "bot" ? ` · vs ${displayName("Bot")}` : ""}</span>
         {state.mode === "versus" && <><br /><span className="muted">This private game is for whoever has the link and passphrase.</span></>}
         {(state.boat_result || state.first_turn_result) && <><br /><span className="muted">{state.boat_result || state.first_turn_result}</span></>}
         <br />Trophies: {trophies.map(([key, value]) => <span key={key} title={`${key === "all" ? "All types" : key} trophy: ${key === "all" ? 5 : 3} Victory Points`}>{key}: {Array.isArray(value) ? value.map(displayName).join(", ") : value ? displayName(value) : "none"} · </span>)}<br /><span className="muted">Die faces: {state.die_faces.join(", ")}</span>

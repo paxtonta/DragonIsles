@@ -50,8 +50,8 @@ class WebSession:
     def __init__(
         self, mode: str = "bot", state_path: Path | None = None
     ) -> None:
-        if mode not in {"bot", "versus"}:
-            raise ValueError("mode must be bot or versus")
+        if mode not in {"bot", "versus", "solo"}:
+            raise ValueError("mode must be bot, versus, or solo")
         self.lock = threading.RLock()
         self.mode = mode
         self.state_path = state_path
@@ -99,6 +99,13 @@ class WebSession:
                 Player("Player 2", characters[1]),
             ]
             self.game = Game(encounters, rng=rng, players=players, interaction=interaction)
+        elif self.mode == "solo":
+            self.game = Game(
+                encounters,
+                characters=[random.choice(list(CHARACTERS.values()))],
+                allow_single_player=True,
+                interaction=interaction,
+            )
         else:
             self.game = Game(encounters, interaction=interaction)
         self._apply_seat_names()
@@ -109,8 +116,8 @@ class WebSession:
         self._first_turn_result = (
             "Human goes first." if self.mode == "bot" else None
         )
-        self.first_turn_decided = self.mode == "bot"
-        if self.mode == "bot":
+        self.first_turn_decided = self.mode != "versus"
+        if self.mode in {"bot", "solo"}:
             self.game.state.current_player = 0
         self.pending: dict[str, Any] = {}
         self.pending_challenge: ChallengeProgress | None = None
@@ -124,8 +131,8 @@ class WebSession:
     def new_game(self, mode: str | None = None) -> None:
         with self.lock:
             if mode is not None:
-                if mode not in {"bot", "versus"}:
-                    raise ValueError("mode must be bot or versus")
+                if mode not in {"bot", "versus", "solo"}:
+                    raise ValueError("mode must be bot, versus, or solo")
                 self.mode = mode
             self._reset()
             self._save()
@@ -138,8 +145,8 @@ class WebSession:
         boat: dict[str, Any] | None = None,
     ) -> None:
         """Adopt a clean persisted game and reconnect browser callbacks."""
-        if mode not in {"bot", "versus"}:
-            raise ValueError("mode must be bot or versus")
+        if mode not in {"bot", "versus", "solo"}:
+            raise ValueError("mode must be bot, versus, or solo")
         with self.lock:
             self.mode = mode
             self.seat_names = dict(seat_names or {})
@@ -172,7 +179,7 @@ class WebSession:
                     boat.get("stage", "date") == "time"
                     and not self.first_turn_decided
                 )
-            else:
+            elif self.mode == "bot":
                 first_turn = boat.get(
                     "first_turn", {"result": None, "decided": True}
                 )
@@ -180,6 +187,11 @@ class WebSession:
                 self.first_turn_decided = True
                 if not first_turn["decided"]:
                     self.game.state.current_player = 0
+                self.boat_time_open = False
+            else:
+                self._first_turn_result = None
+                self.first_turn_decided = True
+                self.game.state.current_player = 0
                 self.boat_time_open = False
             self.boat_time_followups = {}
             self._apply_seat_names()
@@ -262,6 +274,8 @@ class WebSession:
     def player_for_seat(self, seat: int) -> Player:
         if seat not in (0, 1):
             raise ValueError("seat must be 0 or 1")
+        if self.mode == "solo" and seat != 0:
+            raise ValueError("solo mode has only one seat")
         return self.game.state.players[seat]
 
     def _choose_discards(self, player: Player, count: int) -> None:
@@ -360,7 +374,10 @@ class WebSession:
             return
         if self.game.pending_discard is not None:
             return
-        self._finish_turn()
+        if len(self.game.state.players) > 1:
+            self._finish_turn()
+        else:
+            self.game.state.turn_number += 1
         self._run_bots()
 
     def action(self, payload: dict[str, Any], seat: int = 0) -> None:
@@ -803,11 +820,15 @@ class WebSession:
     def state(self, seat: int = 0) -> dict[str, Any]:
         with self.lock:
             player = self.player_for_seat(seat)
-            opponent = self.game.state.players[1 - seat]
+            opponent = (
+                self.game.state.players[1 - seat]
+                if len(self.game.state.players) > 1
+                else None
+            )
             occupied_seats = (
                 set(AUTH_SESSIONS.values())
                 if self.mode == "versus" and PASSPHRASE is not None
-                else {0, 1}
+                else set(range(len(self.game.state.players)))
             )
             players = []
             for listed_seat, listed_player in enumerate(self.game.state.players):
@@ -854,7 +875,7 @@ class WebSession:
                 "seat": seat,
                 "seat_name": player.name,
                 "opponent_name": (
-                    opponent.name if 1 - seat in occupied_seats else None
+                    opponent.name if opponent is not None and 1 - seat in occupied_seats else None
                 ),
                 "human_turn": self.game.state.players[self.game.state.current_player]
                 is player,
@@ -971,7 +992,7 @@ class WebSession:
                         ),
                     }
                 state["boat_result"] = self.boat_result
-            else:
+            elif self.mode == "bot":
                 state["first_turn"] = (
                     None
                     if self.first_turn_decided
@@ -1209,7 +1230,7 @@ function render(){
  let market=S.market.map(cardHtml).join(', ');
  let tokens=S.tokens?`<div class=panel><b>Token supply</b><br>Potions left: ${S.tokens.potions} · Coins left: ${S.tokens.coins.reduce((total,c)=>total+c[1],0)}</div>`:'';
  document.getElementById('app').innerHTML=`<div class=grid><section>
- <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?(S.opponent_name?`Waiting for ${esc(S.opponent_name)}…`:'No other player has joined yet.'):'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)} · ${S.mode==='versus'?`vs ${esc(S.opponent_name||'no one yet')}`:'vs Bot'}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${Object.entries(S.trophies).map(([kind,owner])=>`<span title="${esc(kind)} trophy: ${kind==='all'?5:3} VP">${esc(kind)}: ${esc(owner||'none')}</span>`).join(' · ')}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
+ <div class=panel>${S.first_turn?'':`<b>Turn ${S.turn}</b>${S.boat?'':` — ${S.game_over?'Game over':(S.human_turn?'Your turn':(S.mode==='versus'?(S.opponent_name?`Waiting for ${esc(S.opponent_name)}…`:'No other player has joined yet.'):'Bot turn'))}`}<br>`}<span class=muted>Playing as ${esc(S.seat_name)}${S.mode==='versus'?` · vs ${esc(S.opponent_name||'no one yet')}`:S.mode==='bot'?' · vs Bot':''}</span>${S.mode==='versus'?'<br><span class=muted>This private game is for whoever has the link and passphrase.</span>':''}${S.boat_result||S.first_turn_result?`<br><span class=muted>${esc(S.boat_result||S.first_turn_result)}</span>`:''}<br>Trophies: ${Object.entries(S.trophies).map(([kind,owner])=>`<span title="${esc(kind)} trophy: ${kind==='all'?5:3} VP">${esc(kind)}: ${esc(owner||'none')}</span>`).join(' · ')}<br><span class=muted>Die faces: ${S.die_faces.join(', ')}</span></div>
  ${firstTurnHtml()}
  ${boatHtml()}
  ${S.mode==='versus'&&!S.boat&&!S.human_turn&&!S.challenge&&!S.discard?`<div class=panel>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}…`:'No other player has joined yet.'}</div>`:''}
@@ -1515,7 +1536,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--passphrase", default=os.environ.get("DRAGONISLES_PASSPHRASE")
     )
-    parser.add_argument("--mode", choices=("bot", "versus"), default="bot")
+    parser.add_argument("--mode", choices=("bot", "versus", "solo"), default="bot")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument(
         "--secure-cookie",
@@ -1524,6 +1545,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument("--state-file", default=os.environ.get("DRAGONISLES_STATE_FILE"))
     args = parser.parse_args(argv)
+    if args.mode == "solo" and os.environ.get("DRAGONISLES_DEV_SINGLEPLAYER") != "1":
+        raise SystemExit(
+            "solo mode is developer-only; set DRAGONISLES_DEV_SINGLEPLAYER=1"
+        )
     if args.mode == "versus" and args.passphrase is None:
         args.passphrase = secrets.token_urlsafe(24)
         print(f"Passphrase: {args.passphrase}", flush=True)

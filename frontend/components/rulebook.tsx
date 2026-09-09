@@ -19,13 +19,15 @@ const commonSections = [
   ["End of game", "Compare final scores. If tied, the player with the larger coin-derived share wins."],
 ] as const;
 
-type RulebookProps = { mode: "bot" | "versus" };
+type RulebookProps = { mode: "bot" | "versus" | "solo" };
 
 export function Rulebook({ mode }: RulebookProps) {
   const [open, setOpen] = useState(false);
   const modeSections = mode === "versus"
     ? [["Starting player", "The later boat date goes first. If dates match, submit increasingly specific clock times until a later time determines the order."], ["Multiplayer privacy", "Each seat sees its own hand and potions. Shared encounters, Tavern cards, discard top card, challenge activity, dice, rewards, and public totals are shown according to the current game stage. Stale seats become reclaimable after inactivity."]]
-    : [["Bot turn order", "Choose whether you or the Bot goes first from the first-turn prompt. After your turn is resolved, the Bot continues automatically using the same encounter, card, dice, reward, skill, potion, and scoring rules as a human player."], ["Bot mode", "In bot mode, the second seat is controlled by the DragonIsles bot. The bot follows the same encounter, card, dice, reward, skill, potion, and scoring rules as a human player."]];
+    : mode === "bot"
+      ? [["Bot turn order", "Human always goes first. After your turn is resolved, the Bot continues automatically using the same encounter, card, dice, reward, skill, potion, and scoring rules as a human player."], ["Bot mode", "In bot mode, the second seat is controlled by the DragonIsles bot. The bot follows the same encounter, card, dice, reward, skill, potion, and scoring rules as a human player."]]
+      : [["Singleplayer mode", "This temporary developer mode has one Human player and no opponent. Complete Encounters, advance skills, collect rewards, and play until your eighth successful Encounter."]];
   const sections = [...commonSections.slice(0, 2), ...modeSections, ...commonSections.slice(2)];
 
   return <>

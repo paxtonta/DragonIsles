@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --background: #f4f7fb;
   --foreground: #172335;
   --card: #ffffff;
@@ -8,6 +9,19 @@
   --muted: #536579;
   --accent: #4d6180;
   --success: #2f6b4f;
+  --highlight: #f5c451;
+}
+:root.dark {
+  color-scheme: dark;
+  --background: #101722;
+  --foreground: #e7edf5;
+  --card: #172335;
+  --panel: #202e42;
+  --control: #2b3b52;
+  --border: #52647c;
+  --muted: #b2bfd0;
+  --accent: #7893ba;
+  --success: #62c174;
   --highlight: #f5c451;
 }
 * { box-sizing: border-box; }

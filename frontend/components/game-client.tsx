@@ -44,6 +44,15 @@ function ThemeToggle({ theme, onToggle }: { theme: "dark" | "light"; onToggle: (
   return <Button variant="secondary" onClick={onToggle} aria-pressed={theme === "dark"}>Toggle theme</Button>;
 }
 
+function storedTheme(): "dark" | "light" | null {
+  try {
+    const saved = window.localStorage.getItem("dragonisles-theme");
+    return saved === "light" || saved === "dark" ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
 function LoadingOrLogin({ theme, onToggle, onJoined }: { theme: "dark" | "light"; onToggle: () => void; onJoined: () => void }) {
   const [name, setName] = useState("");
   const [passphrase, setPassphrase] = useState("");
@@ -80,12 +89,16 @@ export default function GameClient() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("dragonisles-theme");
-    if (saved === "light" || saved === "dark") setTheme(saved);
+    const saved = storedTheme();
+    if (saved) setTheme(saved);
   }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
-    window.localStorage.setItem("dragonisles-theme", theme);
+    try {
+      window.localStorage.setItem("dragonisles-theme", theme);
+    } catch {
+      // Theme changes still apply when storage is unavailable.
+    }
   }, [theme]);
 
   const load = useCallback(async () => {
@@ -128,7 +141,7 @@ export default function GameClient() {
 
   const toggleTheme = () => setTheme(current => current === "dark" ? "light" : "dark");
   if (needsLogin) return <LoadingOrLogin theme={theme} onToggle={toggleTheme} onJoined={() => void load()} />;
-  if (!state) return <main><p>{error || "Loading…"}</p></main>;
+  if (!state) return <main><h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} /></h1><p>{error || "Loading…"}</p></main>;
 
   const busy = Boolean(state.challenge || state.prepare || state.trader || state.treasure || state.discard);
   const actionDisabled = state.game_over || Boolean(state.boat) || Boolean(state.first_turn) || (state.mode === "versus" && !state.human_turn);

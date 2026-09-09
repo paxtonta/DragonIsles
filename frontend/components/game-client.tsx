@@ -40,7 +40,11 @@ function TreasureFace({ treasure }: { treasure: Treasure }) {
   return <span className={`treasure-card treasure-${treasure.color}`} title={treasure.description}>{treasure.label}</span>;
 }
 
-function LoadingOrLogin({ onJoined }: { onJoined: () => void }) {
+function ThemeToggle({ theme, onToggle }: { theme: "dark" | "light"; onToggle: () => void }) {
+  return <Button variant="secondary" onClick={onToggle} aria-pressed={theme === "dark"}>Toggle theme</Button>;
+}
+
+function LoadingOrLogin({ theme, onToggle, onJoined }: { theme: "dark" | "light"; onToggle: () => void; onJoined: () => void }) {
   const [name, setName] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [error, setError] = useState("");
@@ -53,7 +57,7 @@ function LoadingOrLogin({ onJoined }: { onJoined: () => void }) {
       setError(caught instanceof Error ? caught.message : "Unable to join game.");
     }
   };
-  return <main><Card><CardHeader><CardTitle>DragonIsles</CardTitle></CardHeader><CardContent>
+  return <main><Card><CardHeader><CardTitle>DragonIsles <ThemeToggle theme={theme} onToggle={onToggle} /></CardTitle></CardHeader><CardContent>
     <p>This private game is for whoever has the link and passphrase.</p>
     <form onSubmit={submit}><Label>Your name<Input value={name} maxLength={20} onChange={event => setName(event.target.value)} /></Label>
       <Label>Passphrase<Input type="password" value={passphrase} onChange={event => setPassphrase(event.target.value)} /></Label>
@@ -64,6 +68,7 @@ function LoadingOrLogin({ onJoined }: { onJoined: () => void }) {
 
 export default function GameClient() {
   const [state, setState] = useState<State | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [needsLogin, setNeedsLogin] = useState(false);
   const [selectedEncounter, setSelectedEncounter] = useState<string | null>(null);
   const [selectedCards, setSelectedCards] = useState<number[]>([]);
@@ -73,6 +78,15 @@ export default function GameClient() {
   const [options, setOptions] = useState<Options | null>(null);
   const [boatText, setBoatText] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("dragonisles-theme");
+    if (saved === "light" || saved === "dark") setTheme(saved);
+  }, []);
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    window.localStorage.setItem("dragonisles-theme", theme);
+  }, [theme]);
 
   const load = useCallback(async () => {
     try {
@@ -112,7 +126,8 @@ export default function GameClient() {
     return () => { cancelled = true; };
   }, [selectedCards, selectedEncounter, state]);
 
-  if (needsLogin) return <LoadingOrLogin onJoined={() => void load()} />;
+  const toggleTheme = () => setTheme(current => current === "dark" ? "light" : "dark");
+  if (needsLogin) return <LoadingOrLogin theme={theme} onToggle={toggleTheme} onJoined={() => void load()} />;
   if (!state) return <main><p>{error || "Loading…"}</p></main>;
 
   const busy = Boolean(state.challenge || state.prepare || state.trader || state.treasure || state.discard);
@@ -129,7 +144,7 @@ export default function GameClient() {
   const trophies = Object.entries(state.trophies);
 
   return <main>
-    <h1>DragonIsles <Button variant="secondary" onClick={() => document.documentElement.classList.toggle("dark")}>Toggle theme</Button><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button><Rulebook mode={state.mode} /></h1>
+    <h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} /><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button><Rulebook mode={state.mode} /></h1>
     {error && <p role="alert">{error}</p>}
     <div className="grid"><section>
       <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {displayName(state.seat_name)} · {state.mode === "versus" ? `vs ${opponentLabel}` : `vs ${displayName("Bot")}`}</span>

@@ -290,8 +290,6 @@ def test_turn_continues_after_restore_in_both_modes(tmp_path):
         session.game.pending_discard = None
         session.game.pending_treasure_draw = None
         session.game.pending_trader_draw = None
-        if mode == "bot":
-            session.action({"action": "first_turn", "choice": "me"})
         if mode == "versus":
             session.action({"action": "boat_answer", "text": "today"}, seat=0)
             session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
@@ -324,7 +322,7 @@ def test_restore_resumes_a_bot_turn():
     source.game.pending_treasure_draw = None
     source.game.pending_trader_draw = None
     source.first_turn_decided = True
-    source._first_turn_result = "You gave the Bot the first turn."
+    source._first_turn_result = "Human goes first."
     source.game.state.current_player = 1
     bot.hand[:] = bot.hand[:1]
     source.game.bot_policy.choose = lambda _context: Decision("prepare")
@@ -337,21 +335,21 @@ def test_restore_resumes_a_bot_turn():
     assert restored.game.state.current_player == 0
 
 
-def test_pending_bot_first_turn_round_trips(tmp_path):
-    path = tmp_path / "pending-bot.pkl"
+def test_bot_first_turn_round_trips_as_human_first(tmp_path):
+    path = tmp_path / "bot.pkl"
     source = WebSession("bot", state_path=path)
     source._save()
 
     loaded = load(path)
     assert loaded is not None
-    assert loaded[4]["first_turn"] == {"result": None, "decided": False}
+    assert loaded[4]["first_turn"] == {"result": "Human goes first.", "decided": True}
     bot = loaded[1].state.players[1]
     bot_snapshot = (bot.attempts, bot.prepares, list(bot.encounters))
 
     restored = WebSession("bot")
     restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
 
-    assert restored.state()["first_turn"] == {"pending": True}
+    assert restored.state()["first_turn"] is None
     assert restored.game.state.current_player == loaded[1].state.current_player
     assert (bot.attempts, bot.prepares, bot.encounters) == bot_snapshot
 
@@ -369,6 +367,28 @@ def test_legacy_bot_save_without_first_turn_loads_as_decided(tmp_path):
     restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
 
     assert restored.state()["first_turn"] is None
+
+
+def test_legacy_pending_bot_first_turn_is_normalized_to_human_first(tmp_path):
+    path = tmp_path / "pending-bot.pkl"
+    source = WebSession("bot")
+    source.game.state.current_player = 1
+    save(
+        path,
+        "bot",
+        source.game,
+        {},
+        first_turn={"result": None, "decided": False},
+    )
+
+    loaded = load(path)
+    assert loaded is not None
+    restored = WebSession("bot")
+    restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
+
+    assert restored.state()["first_turn"] is None
+    assert restored.state()["first_turn_result"] == "Human goes first."
+    assert restored.game.state.current_player == 0
 
 
 def test_legacy_state_without_names_loads_with_empty_mapping(tmp_path):

@@ -12,6 +12,10 @@ CHILDHOOD_FOLLOWUP = (
     'Roughly how many years ago was that? Give a number of years, '
     'e.g. "20 years ago".'
 )
+AMBIGUOUS_DATE_FOLLOWUP = (
+    'That date could be read as day/month or month/day. Write the month as a '
+    'word, e.g. "6 July 2026".'
+)
 
 
 @dataclass(frozen=True)
@@ -184,6 +188,18 @@ def _make_date(year: int, month: int, day: int, today: date) -> date | None:
         return None
 
 
+def _parse_numeric_date(text: str, today: date) -> date | str | None:
+    match = re.fullmatch(r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})", text)
+    if match is None:
+        return None
+    a, b, year = (int(value) for value in match.groups())
+    dmy = _make_date(year, b, a, today) if 1 <= b <= 12 and 1 <= a <= 31 else None
+    mdy = _make_date(year, a, b, today) if 1 <= a <= 12 and 1 <= b <= 31 else None
+    if dmy is not None and mdy is not None and dmy != mdy:
+        return AMBIGUOUS_DATE_FOLLOWUP
+    return dmy if dmy is not None else mdy
+
+
 def _month_date(month: int, day: int, year: int | None, today: date) -> date | None:
     if year is not None:
         return _make_date(year, month, day, today)
@@ -270,6 +286,12 @@ def parse_boat_answer(text: str, today: date) -> BoatAnswer:
         if parsed is not None:
             return BoatAnswer(raw, 3, parsed)
         return BoatAnswer(raw, 0, None)
+
+    parsed_numeric = _parse_numeric_date(raw, today)
+    if isinstance(parsed_numeric, str):
+        return BoatAnswer(raw, 0, None, parsed_numeric)
+    if parsed_numeric is not None:
+        return BoatAnswer(raw, 3, parsed_numeric)
 
     parsed = _parse_month_date(raw, today)
     if parsed is not None:

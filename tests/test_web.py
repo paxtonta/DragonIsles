@@ -10,6 +10,7 @@ import pytest
 
 from dragonisles.bot import Decision
 from dragonisles.cards import Card
+from dragonisles.boat import AMBIGUOUS_DATE_FOLLOWUP
 from dragonisles.characters import ABILITIES, CHARACTERS, SKILL_TRACKS
 from dragonisles.encounters import Encounter, load_encounters
 from dragonisles.engine import ChallengeProgress, Player
@@ -1356,6 +1357,19 @@ def test_versus_childhood_boat_answer_requests_years_and_can_be_replaced():
         "mine": "20 years ago",
         "waiting": True,
     }
+
+
+def test_versus_ambiguous_numeric_boat_date_can_be_replaced():
+    session = WebSession("versus")
+
+    with pytest.raises(ValueError, match=re.escape(AMBIGUOUS_DATE_FOLLOWUP)):
+        session.action({"action": "boat_answer", "text": "06/07/2026"}, seat=0)
+
+    assert session.boat_answers == {}
+    assert session.state(0)["boat"]["answered"] is False
+
+    session.action({"action": "boat_answer", "text": "6 July 2026"}, seat=0)
+    assert session.boat_answers[0].raw == "6 July 2026"
 
 
 def test_versus_same_date_answers_open_time_tie_break():

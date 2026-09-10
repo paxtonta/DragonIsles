@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import pytest
 
 from dragonisles.boat import (
+    AMBIGUOUS_DATE_FOLLOWUP,
     CHILDHOOD_FOLLOWUP,
     BoatAnswer,
     BoatTime,
@@ -14,6 +15,23 @@ from dragonisles.boat import (
 
 
 TODAY = date(2026, 8, 10)
+NUMERIC_DATE_TODAY = date(2026, 9, 10)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    (
+        ("04/04/2026", (3, date(2026, 4, 4), None)),
+        ("31/07/2018", (3, date(2018, 7, 31), None)),
+        ("07/31/2018", (3, date(2018, 7, 31), None)),
+        ("31-07-2018", (3, date(2018, 7, 31), None)),
+        ("06/07/2026", (0, None, AMBIGUOUS_DATE_FOLLOWUP)),
+        ("07/06/2026", (0, None, AMBIGUOUS_DATE_FOLLOWUP)),
+    ),
+)
+def test_parse_numeric_boat_dates(text, expected):
+    answer = parse_boat_answer(text, NUMERIC_DATE_TODAY)
+    assert (answer.tier, answer.date, answer.followup) == expected
 
 
 @pytest.mark.parametrize(

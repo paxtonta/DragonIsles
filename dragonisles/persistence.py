@@ -82,7 +82,7 @@ def load(
         first_turn = payload.get(
             "first_turn", {"result": None, "decided": True}
         )
-        if mode not in {"bot", "versus", "solo"} or not isinstance(game, Game):
+        if mode not in {"bot", "versus"} or not isinstance(game, Game):
             raise ValueError("invalid state fields")
         if (
             not isinstance(auth, dict)

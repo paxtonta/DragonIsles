@@ -1183,7 +1183,7 @@ function treasureChoiceHtml(){let t=S.treasure;if(S.game_over||!t)return '';
  return `<div class=panel><b>Treasure reward</b> — keep one of the two drawn treasures:<br>${choices}</div>`}
 
 function discardHtml(){let d=S.discard;if(S.game_over||!d)return '';
- if(d.player_is_bot||!d.mine)return `<div class=panel><b>${esc(d.player)} is discarding</b> — ${d.count} card(s) remaining.</div>`;
+ if(d.player_is_bot||d.mine===false)return `<div class=panel><b>${esc(d.player)} is discarding</b> — ${d.count} card(s) remaining.</div>`;
  let picks=S.hand.map(c=>{let id=`discard-card-${c.index}`;return `<label for="${id}"><input id="${id}" type=checkbox ${discardPicks.includes(c.index)?'checked':''} onchange="toggleDiscard(${c.index})"> ${cardHtml(c)}</label>`}).join('');
  return `<div class=panel><b>Choose discard</b> — select one card (${d.count} remaining):<br><div class=hand>${picks}</div><button onclick="post('/api/action',{action:'discard',cards:discardPicks})" ${discardPicks.length!==1?'disabled':''}>Discard selected</button></div>`}
 
@@ -1266,7 +1266,7 @@ async function refreshMethods(){if(S.boat||S.first_turn||!selected||(!S.human_tu
  if(method&&!o[method].enabled)method=null;
  syncChallengeButton(!!method)}
 function attempt(){if(S.boat||S.first_turn)return;rerollPicks=[];let payload={action:'attempt',encounter:selected,method,cards};cards=[];post('/api/action',payload)}
-setTheme(localStorage.getItem('dragonisles-theme')||'dark');get();
+setTheme(localStorage.getItem('dragonisles-theme')||'light');get();
 setInterval(()=>{if(S&&S.mode==='versus'&&!S.human_turn)get()},2000);
 setInterval(()=>{if(S&&(!S.mode||S.mode==='bot'||S.human_turn)&&!S.challenge&&!S.prepare&&!S.discard&&!S.treasure&&!S.trader)get()},3000);
 </script></body></html>"""
@@ -1329,7 +1329,7 @@ button{background:var(--control);color:var(--text);border:1px solid var(--border
 <script>
 function setTheme(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('dragonisles-theme',theme)}catch{}}
 function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
-try{setTheme(localStorage.getItem('dragonisles-theme')==='light'?'light':'dark')}catch{setTheme('dark')}
+try{setTheme(localStorage.getItem('dragonisles-theme')==='dark'?'dark':'light')}catch{setTheme('light')}
 async function join(event){event.preventDefault();let name=event.target.elements.name.value,passphrase=event.target.elements.passphrase.value;
  let response=await fetch('/api/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,passphrase})});
  if(response.ok)location.href='/';else{let message='Unable to join game.';try{let body=await response.json();if(body.error==='both seats are taken')message='This game already has two players.';else if(body.error==='invalid passphrase')message='That passphrase is not correct.'}catch{}document.getElementById('error').textContent=message}

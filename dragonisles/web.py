@@ -972,10 +972,14 @@ class WebSession:
                     state["boat"] = None
                 elif self.boat_time_open:
                     answer = self.boat_times.get(seat)
+                    opponent_answer = self.boat_times.get(1 - seat)
                     state["boat"] = {
                         "stage": "time",
                         "answered": answer is not None,
                         "mine": answer.raw if answer is not None else None,
+                        "opponent": (
+                            opponent_answer.raw if opponent_answer is not None else None
+                        ),
                         "waiting": (
                             answer is not None and 1 - seat not in self.boat_times
                         ),
@@ -983,10 +987,14 @@ class WebSession:
                     }
                 else:
                     answer = self.boat_answers.get(seat)
+                    opponent_answer = self.boat_answers.get(1 - seat)
                     state["boat"] = {
                         "stage": "date",
                         "answered": answer is not None,
                         "mine": answer.raw if answer is not None else None,
+                        "opponent": (
+                            opponent_answer.raw if opponent_answer is not None else None
+                        ),
                         "waiting": (
                             answer is not None and 1 - seat not in self.boat_answers
                         ),
@@ -1171,8 +1179,9 @@ function handHtml(){let disabled=S.game_over||S.boat||S.first_turn||(!S.human_tu
 
 function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
  let prompt=S.boat.stage==='time'?'You both last travelled by boat on the same day. Roughly what time of day was that? Pacific unless you add a zone — e.g. "9am", "2:30pm", "14:00", "17:00 et".':'When did you last travel by boat? The more recent answer takes the first turn.';
- if(S.boat.waiting)return `<div class=panel><b>${prompt}</b><br>Your answer: ${esc(S.boat.mine)}<br><span class=muted>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}'s answer…`:'No other player has joined yet.'}</span></div>`;
- return `<div class=panel><b>${prompt}</b>${S.boat.message?`<br><span class=muted>${esc(S.boat.message)}</span>`:''}<br><input id=boat-answer type=text maxlength=60 value="${esc(boatDraft!==null?boatDraft:(S.boat.mine||''))}" oninput="boatDraft=this.value"><button onclick="submitBoat()">Submit</button></div>`}
+ let opponentAnswer=S.boat.opponent?`<br>${S.opponent_name?`${esc(S.opponent_name)}'s`:'Opponent'} answer: ${esc(S.boat.opponent)}`:'';
+ if(S.boat.waiting)return `<div class=panel><b>${prompt}</b><br>Your answer: ${esc(S.boat.mine)}${opponentAnswer}<br><span class=muted>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}'s answer…`:'No other player has joined yet.'}</span></div>`;
+ return `<div class=panel><b>${prompt}</b>${opponentAnswer}${S.boat.message?`<br><span class=muted>${esc(S.boat.message)}</span>`:''}<br><input id=boat-answer type=text maxlength=60 value="${esc(boatDraft!==null?boatDraft:(S.boat.mine||''))}" oninput="boatDraft=this.value"><button onclick="submitBoat()">Submit</button></div>`}
 function submitBoat(){let input=document.getElementById('boat-answer');post('/api/action',{action:S.boat.stage==='time'?'boat_time':'boat_answer',text:input.value})}
 function firstTurnHtml(){return ''}
 

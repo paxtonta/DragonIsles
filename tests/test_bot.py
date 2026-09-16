@@ -142,6 +142,30 @@ def test_bot_uses_plus_two_when_it_flips_attempt_threshold():
     assert decision.potion is None
 
 
+def test_bot_keeps_plus_two_for_a_low_value_failure_potion():
+    policy = LiteralPolicy()
+    context = DecisionContext(
+        [Card("red", 1)],
+        [],
+        potions=[PotionToken(PLUS_TWO)],
+    )
+    encounter = Encounter("One point", 1, 5, 5, 5)
+
+    assert not policy.choose_plus_two_after_roll(context, encounter, "strike", 4)
+
+
+def test_bot_spends_plus_two_when_success_beats_failure_potion():
+    policy = LiteralPolicy()
+    context = DecisionContext(
+        [Card("red", 1)],
+        [],
+        potions=[PotionToken(PLUS_TWO)],
+    )
+    encounter = Encounter("Three points", 3, 5, 5, 5)
+
+    assert policy.choose_plus_two_after_roll(context, encounter, "strike", 4)
+
+
 def test_monk_purges_regardless_of_hand_size():
     character = CHARACTERS["Monk"]
     context = DecisionContext(

@@ -482,9 +482,7 @@ class LiteralPolicy:
                 reroll_ones=_reroll_ones(context),
             )
             if combo is not None:
-                score += _adventure_draw_value(context, 1) * challenge_probability(
-                    context, encounter, method, combo[0].card_count
-                )
+                score += _adventure_draw_value(context, 1)
         return score
 
     def _method_reward_priority(
@@ -515,6 +513,16 @@ class LiteralPolicy:
             if self._should_challenge(context, encounter, item[0], item[1])
         ]
         pool = qualifying or list(options)
+        if maximize_probability:
+            return max(
+                pool,
+                key=lambda item: (
+                    item[1][1],
+                    self._challenge_option_value(
+                        context, encounter, item[0], item[1], maximize_probability
+                    ),
+                ),
+            )
         return max(
             pool,
             key=lambda item: self._challenge_option_value(

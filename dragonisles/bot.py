@@ -515,23 +515,34 @@ class LiteralPolicy:
             if self._should_challenge(context, encounter, item[0], item[1])
         ]
         pool = qualifying or list(options)
-        if maximize_probability:
-            return max(
-                pool,
-                key=lambda item: (
-                    item[1][1],
-                    -item[1][0].card_count,
-                    -self._remaining_hand_value(context, encounter, item[1][0]),
-                ),
-            )
         return max(
             pool,
-            key=lambda item: (
-                self._method_reward_priority(context, encounter, item[0]),
-                item[1][1],
-                -item[1][0].card_count,
-                self._remaining_hand_value(context, encounter, item[1][0]),
+            key=lambda item: self._challenge_option_value(
+                context, encounter, item[0], item[1], maximize_probability
             ),
+        )
+
+    def _challenge_option_value(
+        self,
+        context: DecisionContext,
+        encounter: Encounter,
+        method: str,
+        result: tuple[Combo, float],
+        maximize_probability: bool = False,
+    ) -> float:
+        combo, probability = result
+        reward_value = (
+            encounter.victory_points
+            + _trophy_gain(context, encounter)
+            + self._method_reward_score(context, encounter, method)
+        )
+        future_hand_value = self._remaining_hand_value(context, encounter, combo)
+        card_efficiency = 1.0 / combo.card_count
+        probability_weight = 2.0 if maximize_probability else 1.0
+        return (
+            probability_weight * probability * reward_value
+            + 0.25 * future_hand_value
+            + 3.0 * card_efficiency
         )
 
     def _smallest_qualifying_combo(
@@ -571,13 +582,14 @@ class LiteralPolicy:
             if self._should_challenge(context, encounter, method, result):
                 candidates.append(result)
         return (
-            min(
+            max(
                 candidates,
-                key=lambda item: (
-                    item[0].card_count,
-                    -item[1],
-                    sum(card.wild for card in item[0].cards),
-                    -self._remaining_hand_value(context, encounter, item[0]),
+                key=lambda item: self._challenge_option_value(
+                    context,
+                    encounter,
+                    method,
+                    item,
+                    maximize_probability,
                 ),
             )
             if candidates

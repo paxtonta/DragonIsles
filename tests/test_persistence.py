@@ -206,12 +206,14 @@ def test_pending_boat_question_round_trips(tmp_path):
         "stage": "date",
         "answered": True,
         "mine": "last week",
+        "opponent": None,
         "waiting": True,
     }
     assert restored.state(1)["boat"] == {
         "stage": "date",
         "answered": False,
         "mine": None,
+        "opponent": "last week",
         "waiting": False,
     }
 

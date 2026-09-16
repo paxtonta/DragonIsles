@@ -57,6 +57,7 @@ class WebSession:
         self.state_path = state_path
         self.seat_names: dict[int, str] = {}
         self.boat_answers: dict[int, BoatAnswer] = {}
+        self.boat_clarifications: dict[int, tuple[tuple[str, date], ...]] = {}
         self.boat_times: dict[int, BoatTime] = {}
         self.boat_time_open = False
         self.boat_time_followups: dict[int, str] = {}
@@ -110,6 +111,7 @@ class WebSession:
             self.game = Game(encounters, interaction=interaction)
         self._apply_seat_names()
         self.boat_answers = {}
+        self.boat_clarifications = {}
         self.boat_times = {}
         self.boat_time_open = False
         self.boat_time_followups = {}
@@ -193,6 +195,7 @@ class WebSession:
                 self.first_turn_decided = True
                 self.game.state.current_player = 0
                 self.boat_time_open = False
+            self.boat_clarifications = {}
             self.boat_time_followups = {}
             self._apply_seat_names()
             self.pending = {}
@@ -419,15 +422,23 @@ class WebSession:
                 if self.first_turn_decided:
                     raise ValueError("the boat question has already been answered")
                 text = _clean_text(payload.get("text"), 60)
-                answer = parse_boat_answer(text, date.today())
+                opponent_answer = self.boat_answers.get(1 - seat)
+                answer = parse_boat_answer(
+                    text,
+                    date.today(),
+                    reference=opponent_answer,
+                )
                 if answer.tier == 0:
+                    if answer.clarifications:
+                        self.boat_clarifications[seat] = answer.clarifications
                     raise ValueError(
                         answer.followup
                         or (
-                            'I could not read that. Try a date like "6 Aug", '
+                            'I could not read that. Try a date like "June 7, 2026", '
                             '"two weeks ago", or "never".'
                         )
                     )
+                self.boat_clarifications.pop(seat, None)
                 self.boat_answers[seat] = answer
                 if len(self.boat_answers) == 2:
                     first, second = (
@@ -999,6 +1010,12 @@ class WebSession:
                             answer is not None and 1 - seat not in self.boat_answers
                         ),
                     }
+                    clarifications = self.boat_clarifications.get(seat)
+                    if clarifications:
+                        state["boat"]["clarifications"] = [
+                            {"label": label, "value": value.isoformat()}
+                            for label, value in clarifications
+                        ]
                 state["boat_result"] = self.boat_result
             elif self.mode == "bot":
                 state["first_turn"] = (
@@ -1180,9 +1197,11 @@ function handHtml(){let disabled=S.game_over||S.boat||S.first_turn||(!S.human_tu
 function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
  let prompt=S.boat.stage==='time'?'You both last travelled by boat on the same day. Roughly what time of day was that? Pacific unless you add a zone — e.g. "9am", "1 p.m.", "2:30pm", "14:00", "17:00 et".':'When did you last travel by boat? The more recent answer takes the first turn. Use "June 7, 2026" or a numeric date with hyphen, dot, or slash separators; ambiguous numeric dates will ask for clarification. If the other player has answered, you may say "later than that" or "earlier than that".';
  let opponentAnswer=S.boat.opponent?`<br>${S.opponent_name?`${esc(S.opponent_name)}'s`:'Opponent'} answer: ${esc(S.boat.opponent)}`:'';
+ let choices=(S.boat.clarifications||[]).map(choice=>`<button onclick="chooseBoatClarification('${esc(choice.value)}')">${esc(choice.label)}</button>`).join('');
  if(S.boat.waiting)return `<div class=panel><b>${prompt}</b><br>Your answer: ${esc(S.boat.mine)}${opponentAnswer}<br><span class=muted>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}'s answer…`:'No other player has joined yet.'}</span></div>`;
- return `<div class=panel><b>${prompt}</b>${opponentAnswer}${S.boat.message?`<br><span class=muted>${esc(S.boat.message)}</span>`:''}<br><input id=boat-answer type=text maxlength=60 value="${esc(boatDraft!==null?boatDraft:(S.boat.mine||''))}" oninput="boatDraft=this.value"><button onclick="submitBoat()">Submit</button></div>`}
+ return `<div class=panel><b>${prompt}</b>${opponentAnswer}${S.boat.message?`<br><span class=muted>${esc(S.boat.message)}</span>`:''}${choices?`<br>${choices}`:''}<br><input id=boat-answer type=text maxlength=60 value="${esc(boatDraft!==null?boatDraft:(S.boat.mine||''))}" oninput="boatDraft=this.value"><button onclick="submitBoat()">Submit</button></div>`}
 function submitBoat(){let input=document.getElementById('boat-answer');post('/api/action',{action:S.boat.stage==='time'?'boat_time':'boat_answer',text:input.value})}
+function chooseBoatClarification(value){boatDraft=value;post('/api/action',{action:'boat_answer',text:value})}
 function firstTurnHtml(){return ''}
 
 function challengeHtml(){let c=S.challenge;if(S.game_over||!c)return '';

@@ -1369,7 +1369,7 @@ def test_versus_unreadable_boat_answer_is_not_recorded():
 
     with pytest.raises(
         ValueError,
-        match=r'I could not read that\. Try a date like "6 Aug", "two weeks ago", or "never"\.',
+        match=r'I could not read that\. Try a date like "June 7, 2026", "two weeks ago", or "never"\.',
     ):
         session.action({"action": "boat_answer", "text": "??? 123"}, seat=0)
 
@@ -1414,6 +1414,33 @@ def test_versus_same_date_answers_open_time_tie_break():
     }
     with pytest.raises(ValueError, match="boat date answer is no longer open"):
         session.action({"action": "boat_answer", "text": "today"}, seat=0)
+
+
+def test_versus_ambiguous_numeric_date_requests_clarification():
+    session = WebSession("versus")
+
+    with pytest.raises(ValueError, match="Please clarify that numeric date"):
+        session.action({"action": "boat_answer", "text": "06-07-2026"}, seat=0)
+
+    assert session.boat_answers == {}
+
+
+def test_versus_relative_boat_answer_uses_opponent_date():
+    session = WebSession("versus")
+    session.action({"action": "boat_answer", "text": "June 7, 2026"}, seat=0)
+    session.action({"action": "boat_answer", "text": "Later than that"}, seat=1)
+
+    assert session.first_turn_decided is True
+    assert session.game.state.current_player == 1
+
+
+def test_versus_relative_boat_answer_requires_opponent_date():
+    session = WebSession("versus")
+
+    with pytest.raises(ValueError, match="other player must submit"):
+        session.action({"action": "boat_answer", "text": "Earlier than that"}, seat=0)
+
+    assert session.boat_answers == {}
 
 
 def test_versus_time_answers_choose_later_time_and_show_opponent():

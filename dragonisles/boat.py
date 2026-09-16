@@ -12,6 +12,15 @@ CHILDHOOD_FOLLOWUP = (
     'Roughly how many years ago was that? Give a number of years, '
     'e.g. "20 years ago".'
 )
+DATE_FORMAT_FOLLOWUP = (
+    "Please clarify that numeric date. Use a written month, such as "
+    '"June 7, 2026", or specify whether the first number is the month '
+    "or day."
+)
+RELATIVE_DATE_FOLLOWUP = (
+    'To use "later than that" or "earlier than that", the other player '
+    "must submit a readable date first."
+)
 
 
 @dataclass(frozen=True)
@@ -149,7 +158,10 @@ def parse_boat_time(text: str) -> BoatTime | None:
     elif clock == "midnight":
         minutes = 0
     else:
-        match = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*([ap])m", clock)
+        match = re.fullmatch(
+            r"(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?",
+            clock,
+        )
         if match is not None:
             hour, minute, meridiem = match.groups()
             hour = int(hour)
@@ -258,18 +270,60 @@ def _parse_weekday(text: str, today: date) -> date | None:
     return today - timedelta(days=days_ago)
 
 
-def parse_boat_answer(text: str, today: date) -> BoatAnswer:
+def _parse_numeric_date(
+    text: str,
+    today: date,
+) -> BoatAnswer | None:
+    match = re.fullmatch(r"(\d{1,4})\s*([./-])\s*(\d{1,2})\s*\2\s*(\d{1,4})", text)
+    if match is None:
+        return None
+    first, _, second, third = match.groups()
+    first_value, second_value, third_value = map(int, (first, second, third))
+    if len(first) == 4:
+        year, month, day = first_value, second_value, third_value
+        parsed = _make_date(year, month, day, today)
+        return (
+            BoatAnswer(text, 3, parsed)
+            if parsed is not None
+            else BoatAnswer(text, 0, None)
+        )
+    if len(third) != 4:
+        return BoatAnswer(text, 0, None)
+    if first_value <= 12 and second_value <= 12:
+        return BoatAnswer(text, 0, None, DATE_FORMAT_FOLLOWUP)
+    if first_value > 12 and second_value <= 12:
+        month, day = second_value, first_value
+    elif second_value > 12 and first_value <= 12:
+        month, day = first_value, second_value
+    else:
+        return BoatAnswer(text, 0, None)
+    parsed = _make_date(third_value, month, day, today)
+    return (
+        BoatAnswer(text, 3, parsed)
+        if parsed is not None
+        else BoatAnswer(text, 0, None)
+    )
+
+
+def parse_boat_answer(
+    text: str,
+    today: date,
+    reference: BoatAnswer | None = None,
+) -> BoatAnswer:
     raw = _clean(text)
     if not raw:
         return BoatAnswer(raw, 0, None)
     normalized = raw.casefold()
 
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
-        year, month, day = (int(part) for part in raw.split("-"))
-        parsed = _make_date(year, month, day, today)
-        if parsed is not None:
-            return BoatAnswer(raw, 3, parsed)
-        return BoatAnswer(raw, 0, None)
+    numeric_date = _parse_numeric_date(raw, today)
+    if numeric_date is not None:
+        return numeric_date
+
+    if normalized in {"later than that", "earlier than that"}:
+        if reference is None or reference.tier != 3 or reference.date is None:
+            return BoatAnswer(raw, 0, None, RELATIVE_DATE_FOLLOWUP)
+        delta = timedelta(days=1 if normalized == "later than that" else -1)
+        return BoatAnswer(raw, 3, reference.date + delta)
 
     parsed = _parse_month_date(raw, today)
     if parsed is not None:
@@ -314,7 +368,10 @@ def parse_boat_answer(text: str, today: date) -> BoatAnswer:
     year_match = re.search(r"(?<!\d)(\d{4})(?!\d)", raw)
     if year_match is not None:
         year = int(year_match.group(1))
-        if 1900 <= year <= today.year:
+        if (
+            1900 <= year <= today.year
+            and not re.fullmatch(r"\d{1,4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,4}", raw)
+        ):
             parsed = _make_date(year, 12, 31, today)
             if parsed is not None:
                 return BoatAnswer(raw, 3, parsed)

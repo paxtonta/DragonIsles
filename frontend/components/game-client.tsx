@@ -13,7 +13,8 @@ type Encounter = { id: string; name: string; type: string; vp: number; icons: nu
 type Player = { name: string; character: string; ability: string; is_bot: boolean; encounters: { name: string }[]; coins: number; hand_count: number; hand_limit: number; potions: string[] | number; treasures: Treasure[]; skills: Record<string, number>; seat: number; score: number; coin_points: number };
 type Ladder = { level: number; steps: { bonus: number; reward: string | null; reached: boolean }[] };
 type Challenge = { player: string; player_is_bot: boolean; cards: AdventureCard[]; encounter: string; method: string; rolls: number[]; skill_bonus: number; total: number; target: number; shortfall: number; reroll_limit: number; rerolls_used: number; phase: "reroll" | "resolve" | "skill" | "done"; plus_two: boolean; tracks: string[]; result: boolean };
-type Boat = { stage: "date" | "time"; answered: boolean; mine: string | null; waiting: boolean; message?: string | null };
+type BoatChoice = { value: number; label: string };
+type Boat = { stage: "choice"; answered: boolean; choice: number | null; waiting: boolean; message?: string | null; choices: BoatChoice[] };
 type State = {
   turn: number; revision: number; mode: "bot" | "versus" | "solo"; seat: number; seat_name: string; opponent_name: string | null;
   human_turn: boolean; die_faces: number[]; game_over: boolean; events: string[]; prepare: { remaining: number; drawn: AdventureCard[] } | null;
@@ -85,7 +86,6 @@ export default function GameClient() {
   const [rerollDice, setRerollDice] = useState<number[]>([]);
   const [method, setMethod] = useState<string | null>(null);
   const [options, setOptions] = useState<Options | null>(null);
-  const [boatText, setBoatText] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -166,8 +166,10 @@ export default function GameClient() {
         {(state.boat_result || state.first_turn_result) && <><br /><span className="muted">{state.boat_result || state.first_turn_result}</span></>}
         <br />Trophies: {trophies.map(([key, value]) => <span key={key} title={`${key === "all" ? "All types" : key} trophy: ${key === "all" ? 5 : 3} Victory Points`}>{key}: {Array.isArray(value) ? value.map(displayName).join(", ") : value ? displayName(value) : "none"} · </span>)}<br /><span className="muted">Die faces: {state.die_faces.join(", ")}</span>
       </CardContent></Card>
-      {state.boat && <Card><CardContent><b>{state.boat.stage === "time" ? "Roughly what time of day did you last travel by boat?" : "When did you last travel by boat?"}</b>
-        {state.boat.waiting ? <p>Answer submitted: {state.boat.mine}. {waitingLabel}</p> : <><Input value={boatText || state.boat.mine || ""} onChange={event => setBoatText(event.target.value)} /><Button onClick={() => void post({ action: state.boat?.stage === "time" ? "boat_time" : "boat_answer", text: boatText || state.boat?.mine || "" })}>Submit</Button></>}</CardContent></Card>}
+      {state.boat && <Card><CardContent><b>Who traveled by boat most recently?</b>
+        {state.boat.message && <p role="alert">{state.boat.message}</p>}
+        {state.boat.waiting ? <p>Your choice is submitted. {waitingLabel}</p> : <div>{state.boat.choices.map(choice => <Button key={choice.value} aria-label={choice.label} variant={state.boat?.choice === choice.value ? "secondary" : "default"} onClick={() => void post({ action: "boat_choice", choice: choice.value })}>{choice.label}</Button>)}</div>}
+      </CardContent></Card>}
       {state.mode === "versus" && !state.boat && !state.human_turn && <Card><CardContent>{waitingLabel}</CardContent></Card>}
       {state.game_over && <Card><CardHeader><CardTitle>Final scores</CardTitle></CardHeader><CardContent>{state.players.map(item => <div key={item.seat}>{displayName(item.name)}: <b>{item.score} VP</b></div>)}</CardContent></Card>}
       <h2>Encounters</h2><div className="encounters">{state.encounters.map((encounter, index) =>

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import re
+from calendar import month_name
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -13,9 +14,7 @@ CHILDHOOD_FOLLOWUP = (
     'e.g. "20 years ago".'
 )
 DATE_FORMAT_FOLLOWUP = (
-    "Please clarify that numeric date. Use a written month, such as "
-    '"June 7, 2026", or specify whether the first number is the month '
-    "or day."
+    "Please clarify that numeric date."
 )
 RELATIVE_DATE_FOLLOWUP = (
     'To use "later than that" or "earlier than that", the other player '
@@ -29,6 +28,7 @@ class BoatAnswer:
     tier: int  # 3 dated, 1 never, 0 unreadable
     date: date | None
     followup: str | None = None
+    clarifications: tuple[tuple[str, date], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -196,6 +196,10 @@ def _make_date(year: int, month: int, day: int, today: date) -> date | None:
         return None
 
 
+def _date_label(value: date) -> str:
+    return f"{month_name[value.month]} {value.day}, {value.year}"
+
+
 def _month_date(month: int, day: int, year: int | None, today: date) -> date | None:
     if year is not None:
         return _make_date(year, month, day, today)
@@ -290,7 +294,22 @@ def _parse_numeric_date(
     if len(third) != 4:
         return BoatAnswer(text, 0, None)
     if first_value <= 12 and second_value <= 12:
-        return BoatAnswer(text, 0, None, DATE_FORMAT_FOLLOWUP)
+        choices = tuple(
+            choice
+            for choice in (
+                _make_date(third_value, first_value, second_value, today),
+                _make_date(third_value, second_value, first_value, today),
+            )
+            if choice is not None
+        )
+        if len(choices) == 2 and choices[0] != choices[1]:
+            labels = tuple((_date_label(choice), choice) for choice in choices)
+            prompt = (
+                f"{DATE_FORMAT_FOLLOWUP} Did you mean "
+                f'"{labels[0][0]}" or "{labels[1][0]}"?'
+            )
+            return BoatAnswer(text, 0, None, prompt, labels)
+        return BoatAnswer(text, 0, None)
     if first_value > 12 and second_value <= 12:
         month, day = second_value, first_value
     elif second_value > 12 and first_value <= 12:

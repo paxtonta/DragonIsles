@@ -1321,20 +1321,31 @@ def _clean_name(value: Any) -> str | None:
 
 
 LOGIN_HTML = """<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DragonIsles</title></head>
-<body><main><h1>DragonIsles</h1>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DragonIsles</title>
+<style>
+:root{color-scheme:dark;--bg:#101827;--text:#e8eef7;--card:#1d2a3b;--border:#40536b;--control:#26364a;--muted:#aebdd0}
+:root[data-theme="light"]{color-scheme:light;--bg:#f4f7fb;--text:#172335;--card:#fff;--border:#b7c4d4;--control:#dbe5f0;--muted:#536579}
+body{font:16px system-ui;margin:0;background:var(--bg);color:var(--text)}
+main{max-width:620px;margin:auto;padding:20px}.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px}
+label{display:block;margin:12px 0}input{display:block;box-sizing:border-box;width:100%;margin-top:4px;padding:8px;background:var(--control);color:var(--text);border:1px solid var(--border);border-radius:6px}
+button{background:var(--control);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin:4px;cursor:pointer}button.secondary{background:#4d6180;color:#e8eef7}
+</style></head>
+<body><main><section class=card><h1>DragonIsles <button class=secondary id=theme-toggle type=button onclick="toggleTheme()">Toggle theme</button></h1>
 <p>This private game is for whoever has the link and passphrase.</p>
 <form onsubmit="join(event)">
 <label>Your name <input name="name" type="text" maxlength="20"></label>
 <label>Passphrase <input name="passphrase" type="password" autofocus></label>
 <button type="submit">Join game</button>
-</form><p id="error"></p></main>
+</form><p id="error"></p></section></main>
 <script>
+function setTheme(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('dragonisles-theme',theme)}catch{}}
+function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
+try{setTheme(localStorage.getItem('dragonisles-theme')==='light'?'light':'dark')}catch{setTheme('dark')}
 async function join(event){event.preventDefault();let name=event.target.elements.name.value,passphrase=event.target.elements.passphrase.value;
  let response=await fetch('/api/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,passphrase})});
  if(response.ok)location.href='/';else{let message='Unable to join game.';try{let body=await response.json();if(body.error==='both seats are taken')message='This game already has two players.';else if(body.error==='invalid passphrase')message='That passphrase is not correct.'}catch{}document.getElementById('error').textContent=message}
 }
-</script></body></html>"""
+</script></section></main></body></html>"""
 
 
 def configure(

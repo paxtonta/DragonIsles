@@ -6,8 +6,7 @@ import random
 import re
 from calendar import month_name
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
 
 CHILDHOOD_FOLLOWUP = (
@@ -16,14 +15,6 @@ CHILDHOOD_FOLLOWUP = (
 )
 DATE_FORMAT_FOLLOWUP = (
     "Please clarify that numeric date."
-)
-DATE_INPUT_FOLLOWUP = (
-    'Please enter a complete, valid date with a four-digit year, such as '
-    '"June 7, 2026".'
-)
-DATE_RANGE_OVERLAP_FOLLOWUP = (
-    "That date range overlaps the other player's answer. Please enter a "
-    "non-overlapping date or range."
 )
 RELATIVE_DATE_FOLLOWUP = (
     'To use "later than that" or "earlier than that", the other player '
@@ -38,7 +29,6 @@ class BoatAnswer:
     date: date | None
     followup: str | None = None
     clarifications: tuple[tuple[str, date], ...] = ()
-    date_end: date | None = None
 
 
 @dataclass(frozen=True)
@@ -125,7 +115,6 @@ TIME_FOLLOWUP = (
     'That is not precise enough to settle the tie. Give a clock time, '
     'e.g. "9am".'
 )
-PACIFIC_ZONE = ZoneInfo("America/Los_Angeles")
 
 
 def _clean(text: str) -> str:
@@ -196,16 +185,15 @@ def parse_boat_time(text: str) -> BoatTime | None:
     return BoatTime(raw, start, end)
 
 
-def current_pacific_date() -> date:
-    return datetime.now(PACIFIC_ZONE).date()
+def _clamp(value: date, today: date) -> date:
+    return min(value, today)
 
 
 def _make_date(year: int, month: int, day: int, today: date) -> date | None:
     try:
-        value = date(year, month, day)
+        return _clamp(date(year, month, day), today)
     except ValueError:
         return None
-    return value if value <= today else None
 
 
 def _date_label(value: date) -> str:
@@ -227,7 +215,7 @@ def _month_date(month: int, day: int, year: int | None, today: date) -> date | N
 
 def _parse_month_date(text: str, today: date) -> date | None:
     match = re.fullmatch(
-        r"(\d{1,2})(?:st|nd|rd|th)? ([A-Za-z]+) (\d{4})",
+        r"(\d{1,2})(?:st|nd|rd|th)? ([A-Za-z]+)(?: (\d{4}))?",
         text,
         re.IGNORECASE,
     )
@@ -237,7 +225,7 @@ def _parse_month_date(text: str, today: date) -> date | None:
         if month is not None:
             return _month_date(month, int(day), int(year) if year else None, today)
     match = re.fullmatch(
-        r"([A-Za-z]+) (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})",
+        r"([A-Za-z]+) (\d{1,2})(?:st|nd|rd|th)?(?:,? (\d{4}))?",
         text,
         re.IGNORECASE,
     )
@@ -247,52 +235,6 @@ def _parse_month_date(text: str, today: date) -> date | None:
         if month is not None:
             return _month_date(month, int(day), int(year) if year else None, today)
     return None
-
-
-def _parse_month_range(text: str, today: date) -> BoatAnswer | None:
-    match = re.fullmatch(
-        r"([A-Za-z]+) (\d{1,2})(?:st|nd|rd|th)?\s*"
-        r"(?:-|–|—|through|to)\s*(\d{1,2})(?:st|nd|rd|th)?,? (\d{4})",
-        text,
-        re.IGNORECASE,
-    )
-    if match is not None:
-        month_name, start_day, end_day, year = match.groups()
-        month = _MONTHS.get(month_name.casefold())
-        if month is not None:
-            start = _make_date(int(year), month, int(start_day), today)
-            end = _make_date(int(year), month, int(end_day), today)
-            if start is not None and end is not None and start <= end:
-                return BoatAnswer(text, 3, start, date_end=end)
-            return BoatAnswer(text, 0, None, DATE_INPUT_FOLLOWUP)
-
-    match = re.fullmatch(
-        r"([A-Za-z]+) (\d{1,2})(?:st|nd|rd|th)?\s*"
-        r"(?:-|–|—|through|to)\s*"
-        r"([A-Za-z]+) (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})",
-        text,
-        re.IGNORECASE,
-    )
-    if match is not None:
-        start_month_name, start_day, end_month_name, end_day, year = match.groups()
-        start_month = _MONTHS.get(start_month_name.casefold())
-        end_month = _MONTHS.get(end_month_name.casefold())
-        if start_month is not None and end_month is not None:
-            start = _make_date(int(year), start_month, int(start_day), today)
-            end = _make_date(int(year), end_month, int(end_day), today)
-            if start is not None and end is not None and start <= end:
-                return BoatAnswer(text, 3, start, date_end=end)
-            return BoatAnswer(text, 0, None, DATE_INPUT_FOLLOWUP)
-    return None
-
-
-def _looks_like_month_date(text: str) -> bool:
-    return re.fullmatch(
-        r"(?:\d{1,2}(?:st|nd|rd|th)? [A-Za-z]+(?: \d{4})?|"
-        r"[A-Za-z]+ \d{1,2}(?:st|nd|rd|th)?(?:,? \d{4})?)",
-        text,
-        re.IGNORECASE,
-    ) is not None
 
 
 def _parse_ago(text: str, today: date) -> date | None:
@@ -347,10 +289,10 @@ def _parse_numeric_date(
         return (
             BoatAnswer(text, 3, parsed)
             if parsed is not None
-            else BoatAnswer(text, 0, None, DATE_INPUT_FOLLOWUP)
+            else BoatAnswer(text, 0, None)
         )
     if len(third) != 4:
-        return BoatAnswer(text, 0, None, DATE_INPUT_FOLLOWUP)
+        return BoatAnswer(text, 0, None)
     if first_value <= 12 and second_value <= 12:
         choices = tuple(
             choice
@@ -367,18 +309,18 @@ def _parse_numeric_date(
                 f'"{labels[0][0]}" or "{labels[1][0]}"?'
             )
             return BoatAnswer(text, 0, None, prompt, labels)
-        return BoatAnswer(text, 0, None, DATE_INPUT_FOLLOWUP)
+        return BoatAnswer(text, 0, None)
     if first_value > 12 and second_value <= 12:
         month, day = second_value, first_value
     elif second_value > 12 and first_value <= 12:
         month, day = first_value, second_value
     else:
-        return BoatAnswer(text, 0, None, DATE_INPUT_FOLLOWUP)
+        return BoatAnswer(text, 0, None)
     parsed = _make_date(third_value, month, day, today)
     return (
         BoatAnswer(text, 3, parsed)
         if parsed is not None
-        else BoatAnswer(text, 0, None, DATE_INPUT_FOLLOWUP)
+        else BoatAnswer(text, 0, None)
     )
 
 
@@ -402,15 +344,9 @@ def parse_boat_answer(
         delta = timedelta(days=1 if normalized == "later than that" else -1)
         return BoatAnswer(raw, 3, reference.date + delta)
 
-    parsed_range = _parse_month_range(raw, today)
-    if parsed_range is not None:
-        return parsed_range
-
     parsed = _parse_month_date(raw, today)
     if parsed is not None:
         return BoatAnswer(raw, 3, parsed)
-    if _looks_like_month_date(raw):
-        return BoatAnswer(raw, 0, None, DATE_INPUT_FOLLOWUP)
 
     relative_days = {
         "today": 0,
@@ -448,14 +384,9 @@ def parse_boat_answer(
     if parsed is not None:
         return BoatAnswer(raw, 3, parsed)
 
-    year_match = re.search(
-        r"(?:\b(?:in|during|around|sometime in|the year)\s+)"
-        r"(?P<year>\d{4})\b",
-        raw,
-        re.IGNORECASE,
-    )
+    year_match = re.search(r"(?<!\d)(\d{4})(?!\d)", raw)
     if year_match is not None:
-        year = int(year_match.group("year"))
+        year = int(year_match.group(1))
         if (
             1900 <= year <= today.year
             and not re.fullmatch(r"\d{1,4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,4}", raw)
@@ -487,15 +418,7 @@ def parse_boat_answer(
     ):
         return BoatAnswer(raw, 0, None, CHILDHOOD_FOLLOWUP)
 
-    return BoatAnswer(raw, 0, None, DATE_INPUT_FOLLOWUP)
-
-
-def boat_answers_overlap(first: BoatAnswer, second: BoatAnswer) -> bool:
-    if first.date is None or second.date is None:
-        return False
-    first_end = first.date_end or first.date
-    second_end = second.date_end or second.date
-    return first.date <= second_end and second.date <= first_end
+    return BoatAnswer(raw, 0, None)
 
 
 def resolve_first_seat(
@@ -525,21 +448,13 @@ def resolve_first_seat(
             + f"{names[1]} has travelled by boat and {names[0]} never has, "
             f"so {names[1]} goes first.",
         )
-    if first.tier == 3 and first.date is not None and second.date is not None:
-        first_end = first.date_end or first.date
-        second_end = second.date_end or second.date
-        if first.date > second_end:
-            winner = 0
-        elif second.date > first_end:
-            winner = 1
-        else:
-            winner = None
-        if winner is not None:
-            return (
-                winner,
-                explanation
-                + f"{names[winner]} travelled by boat most recently and goes first.",
-            )
+    if first.tier == 3 and first.date != second.date:
+        winner = 0 if first.date > second.date else 1
+        return (
+            winner,
+            explanation
+            + f"{names[winner]} travelled by boat most recently and goes first.",
+        )
     if times is not None:
         return resolve_boat_times(answers, times, rng, names)
     winner = 0

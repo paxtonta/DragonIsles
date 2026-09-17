@@ -5,6 +5,7 @@ import pytest
 
 from dragonisles.boat import (
     CHILDHOOD_FOLLOWUP,
+    DATE_FORMAT_FOLLOWUP,
     BoatAnswer,
     BoatTime,
     parse_boat_answer,
@@ -22,6 +23,10 @@ TODAY = date(2026, 8, 10)
         ("", (0, None)),
         (" \t ", (0, None)),
         ("2026-08-06", (3, date(2026, 8, 6))),
+        ("13-08-2021", (3, date(2021, 8, 13))),
+        ("13.08.2021", (3, date(2021, 8, 13))),
+        ("13/08/2021", (3, date(2021, 8, 13))),
+        ("08-13-2021", (3, date(2021, 8, 13))),
         ("6 Aug", (3, date(2026, 8, 6))),
         ("August 6, 2026", (3, date(2026, 8, 6))),
         ("aug 6", (3, date(2026, 8, 6))),
@@ -92,6 +97,30 @@ def test_parse_boat_answer_sanitizes_text():
     assert answer.tier == 3
 
 
+@pytest.mark.parametrize("text", ("06-07-2026", "07.06.2026", "06/07/2026"))
+def test_ambiguous_numeric_dates_request_clarification(text):
+    answer = parse_boat_answer(text, TODAY)
+    assert answer.tier == 0
+    assert answer.date is None
+    assert answer.followup == DATE_FORMAT_FOLLOWUP
+
+
+def test_relative_date_answers_use_the_other_player_as_reference():
+    reference = parse_boat_answer("June 7, 2026", TODAY)
+    assert parse_boat_answer("Later than that", TODAY, reference).date == date(
+        2026, 6, 8
+    )
+    assert parse_boat_answer("Earlier than that", TODAY, reference).date == date(
+        2026, 6, 6
+    )
+
+
+def test_relative_date_answers_require_a_reference():
+    answer = parse_boat_answer("Later than that", TODAY)
+    assert answer.tier == 0
+    assert answer.followup
+
+
 def test_childhood_answers_request_a_years_followup():
     for text in ("childhood", "as a kid", "when i was a kid", "as a child"):
         answer = parse_boat_answer(text, TODAY)
@@ -111,6 +140,8 @@ def test_other_unreadable_answers_have_no_followup():
     (
         ("9am", (540, 540)),
         ("9 am", (540, 540)),
+        ("1PM", (780, 780)),
+        ("1 p.m.", (780, 780)),
         ("9:30am", (570, 570)),
         ("9:30 pm", (1290, 1290)),
         ("12am", (0, 0)),
@@ -236,6 +267,17 @@ def test_resolve_first_seat_uses_later_same_day_time():
         'Crendia: "6 Aug" at 2:30pm · Ari: "6 Aug" at 9am — '
         "Crendia travelled later that day and goes first."
     )
+
+
+def test_resolve_first_seat_orders_relative_later_answer_first():
+    reference = parse_boat_answer("June 7, 2026", TODAY)
+    answers = {
+        0: reference,
+        1: parse_boat_answer("Later than that", TODAY, reference),
+    }
+    assert resolve_first_seat(
+        answers, random.Random(1), {0: "Ari", 1: "Crendia"}
+    )[0] == 1
 
 
 def test_resolve_first_seat_reasks_for_equal_same_day_times():

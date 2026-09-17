@@ -1,6 +1,5 @@
 {
-  "rootDirectory": "frontend",
   "framework": "nextjs",
-  "installCommand": "npm ci",
-  "buildCommand": "npm run build"
+  "installCommand": "cd frontend && npm ci",
+  "buildCommand": "cd frontend && npm run build"
 }

@@ -178,6 +178,7 @@ class Game:
         rng: random.Random | None = None,
         characters: Sequence[Character] | None = None,
         players: Sequence[Player] | None = None,
+        allow_single_player: bool = False,
         interaction: GameInteraction | None = None,
     ) -> None:
         self.rules = rules or RulesConfig()
@@ -194,27 +195,39 @@ class Game:
             chosen_characters = (
                 list(characters)
                 if characters is not None
-                else self.rng.sample(list(CHARACTERS.values()), 2)
+                else self.rng.sample(
+                    list(CHARACTERS.values()), 1 if allow_single_player else 2
+                )
             )
-            if len(chosen_characters) != 2:
-                raise ValueError("exactly two characters are required")
-            if chosen_characters[0].name == chosen_characters[1].name:
+            expected_count = 1 if allow_single_player else 2
+            if len(chosen_characters) != expected_count:
+                raise ValueError(
+                    f"exactly {expected_count} character(s) are required"
+                )
+            if len(chosen_characters) == 2 and (
+                chosen_characters[0].name == chosen_characters[1].name
+            ):
                 raise ValueError("the two characters must be distinct")
-            chosen_players = [
-                Player("Human", chosen_characters[0], is_bot=False),
-                Player("Bot", chosen_characters[1], is_bot=True),
-            ]
+            chosen_players = [Player("Human", chosen_characters[0], is_bot=False)]
+            if expected_count == 2:
+                chosen_players.append(
+                    Player("Bot", chosen_characters[1], is_bot=True)
+                )
         else:
             chosen_players = list(players)
-            if len(chosen_players) != 2:
-                raise ValueError("exactly two players are required")
+            allowed_counts = (1, 2) if allow_single_player else (2,)
+            if len(chosen_players) not in allowed_counts:
+                expected = "one or two" if allow_single_player else "two"
+                raise ValueError(f"exactly {expected} player(s) are required")
+            if len(chosen_players) == 1 and not allow_single_player:
+                raise ValueError("single-player games are not enabled")
         self.state = GameState(
             self.rules,
             deck,
             [deck.draw() for _ in range(self.rules.market_size)],
             [],
             chosen_players,
-            current_player=self.rng.randrange(2),
+            current_player=self.rng.randrange(len(chosen_players)),
         )
         self._encounter_deck = encounter_cards
         self._encounter_discard: list[Encounter] = []
@@ -231,7 +244,7 @@ class Game:
         self._coin_supply = dict(self.rules.coin_token_counts)
         bot_player = next((player for player in self.state.players if player.is_bot), None)
         self.bot_policy = policy_for_character(
-            (bot_player or self.state.players[1]).character
+            (bot_player or self.state.players[0]).character
         )
         for player in self.state.players:
             player.hand.extend(
@@ -540,7 +553,12 @@ class Game:
             self._coin_supply[1] -= 1
             player.coins += 1
             return True
-        opponent = next(other for other in self.state.players if other is not player)
+        opponent = next(
+            (other for other in self.state.players if other is not player),
+            None,
+        )
+        if opponent is None:
+            return False
         if opponent.coins:
             opponent.coins -= 1
             player.coins += 1
@@ -552,8 +570,11 @@ class Game:
         if self._potion_supply:
             player.potions.append(self._potion_supply.pop())
             return True
-        opponent = next(other for other in self.state.players if other is not player)
-        if opponent.potions:
+        opponent = next(
+            (other for other in self.state.players if other is not player),
+            None,
+        )
+        if opponent is not None and opponent.potions:
             player.potions.append(opponent.potions.pop())
             return True
         if self._used_potions:
@@ -705,7 +726,10 @@ class Game:
         return self._decision_context_for(player)
 
     def _decision_context_for(self, player: Player) -> DecisionContext:
-        opponent = next(item for item in self.state.players if item is not player)
+        opponent = next(
+            (item for item in self.state.players if item is not player),
+            None,
+        )
         opponent_challenge_cards = (
             self.active_challenge.decision.combo
             if self.active_challenge is not None
@@ -736,10 +760,10 @@ class Game:
             player_index=self.state.players.index(player),
             completed_encounters=player.encounters,
             coins=player.coins,
-            opponent_encounters=opponent.encounters,
-            opponent_treasures=opponent.treasures,
-            opponent_coins=opponent.coins,
-            opponent_character=opponent.character,
+            opponent_encounters=opponent.encounters if opponent is not None else (),
+            opponent_treasures=opponent.treasures if opponent is not None else (),
+            opponent_coins=opponent.coins if opponent is not None else 0,
+            opponent_character=opponent.character if opponent is not None else player.character,
             opponent_challenge_cards=opponent_challenge_cards,
             adventure_cards=tuple(possible_adventure_cards),
         )

@@ -18,6 +18,11 @@ another API origin when needed.
 
 ## Vercel
 
-Configure the Vercel project root directory as `frontend` and set
-`DRAGONISLES_API_URL` to a publicly reachable Python API origin. A Vercel
-frontend cannot reach the default localhost API from a user's device.
+Deploy the repository root as the Vercel project root. The root package
+delegates the Next.js build to `frontend/`, while `api/index.py` exposes the
+FastAPI application under the same Vercel domain. No `DRAGONISLES_API_URL`
+value is needed for this same-project deployment.
+
+The local Next.js development server still proxies `/api/*` to
+`http://127.0.0.1:8125` by default. Set `DRAGONISLES_API_URL` only when using
+the frontend with a separately hosted API outside Vercel.

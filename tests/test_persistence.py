@@ -81,9 +81,8 @@ def test_save_load_round_trip_preserves_game_state(tmp_path):
     assert auth == {"first": 0, "second": 1}
     assert names == {0: "Alice", 1: "Bob"}
     assert boat == {
-        "answers": {},
-        "times": {},
-        "stage": "date",
+        "choices": {},
+        "stage": "choice",
         "result": None,
         "decided": True,
     }
@@ -169,8 +168,8 @@ def test_restart_keeps_authenticated_seats(tmp_path):
 def test_pending_prompt_does_not_overwrite_last_clean_save(tmp_path):
     path = tmp_path / "game.pkl"
     session = WebSession("versus", state_path=path)
-    session.action({"action": "boat_answer", "text": "today"}, seat=0)
-    session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
+    session.action({"action": "boat_choice", "choice": 0}, seat=0)
+    session.action({"action": "boat_choice", "choice": 0}, seat=1)
     session.game.state.current_player = 0
     session._save()
     before = load(path)
@@ -188,62 +187,63 @@ def test_pending_prompt_does_not_overwrite_last_clean_save(tmp_path):
 def test_pending_boat_question_round_trips(tmp_path):
     path = tmp_path / "boat.pkl"
     source = WebSession("versus", state_path=path)
-    source.action({"action": "boat_answer", "text": "last week"}, seat=0)
+    source.action({"action": "boat_choice", "choice": 1}, seat=0)
 
     loaded = load(path)
 
     assert loaded is not None
     assert loaded[4] == {
-        "answers": {0: "last week"},
-        "times": {},
-        "stage": "date",
+        "choices": {0: 1},
+        "stage": "choice",
         "result": None,
         "decided": False,
     }
     restored = WebSession("bot")
     restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
     assert restored.state(0)["boat"] == {
-        "stage": "date",
+        "stage": "choice",
         "answered": True,
-        "mine": "last week",
-        "opponent": None,
+        "choice": 1,
         "waiting": True,
+        "message": None,
+        "choices": [
+            {"value": 0, "label": "I did"},
+            {"value": 1, "label": restored.game.state.players[1].name},
+        ],
     }
     assert restored.state(1)["boat"] == {
-        "stage": "date",
+        "stage": "choice",
         "answered": False,
-        "mine": None,
-        "opponent": "last week",
+        "choice": None,
         "waiting": False,
+        "message": None,
+        "choices": [
+            {"value": 1, "label": "I did"},
+            {"value": 0, "label": restored.game.state.players[0].name},
+        ],
     }
 
 
-def test_pending_boat_time_round_trips(tmp_path):
-    path = tmp_path / "boat-time.pkl"
+def test_resolved_boat_choice_round_trips(tmp_path):
+    path = tmp_path / "boat-choice.pkl"
     source = WebSession("versus", state_path=path)
-    source.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=0)
-    source.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=1)
-    source.action({"action": "boat_time", "text": "9am"}, seat=0)
+    source.action({"action": "boat_choice", "choice": 1}, seat=0)
+    source.action({"action": "boat_choice", "choice": 1}, seat=1)
 
     loaded = load(path)
 
     assert loaded is not None
-    assert loaded[4] == {
-        "answers": {0: "August 6, 2026", 1: "August 6, 2026"},
-        "times": {0: "9am"},
-        "stage": "time",
-        "result": None,
-        "decided": False,
-    }
+    assert loaded[4]["choices"] == {0: 1, 1: 1}
+    assert loaded[4]["stage"] == "choice"
+    assert loaded[4]["decided"] is True
     restored = WebSession("bot")
     restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
-    assert restored.state(0)["boat"]["mine"] == "9am"
-    assert restored.state(0)["boat"]["waiting"] is True
-    assert restored.state(1)["boat"]["mine"] is None
-    assert restored.first_turn_decided is False
+    assert restored.state(0)["boat"] is None
+    assert restored.state(1)["boat"] is None
+    assert restored.first_turn_decided is True
 
 
-def test_legacy_boat_save_without_times_loads_as_date_stage(tmp_path):
+def test_legacy_boat_save_loads_as_fresh_choice_stage(tmp_path):
     source = WebSession("versus")
     path = tmp_path / "legacy-boat.pkl"
     save(
@@ -257,11 +257,10 @@ def test_legacy_boat_save_without_times_loads_as_date_stage(tmp_path):
     loaded = load(path)
 
     assert loaded is not None
-    assert loaded[4]["times"] == {}
-    assert loaded[4]["stage"] == "date"
+    assert loaded[4]["stage"] == "choice"
     restored = WebSession("bot")
     restored.restore(loaded[0], loaded[1], loaded[3], loaded[4])
-    assert restored.state(0)["boat"]["stage"] == "date"
+    assert restored.state(0)["boat"]["stage"] == "choice"
 
 
 def test_corrupt_state_file_starts_fresh_game(tmp_path):
@@ -315,8 +314,8 @@ def test_turn_continues_after_restore_in_both_modes(tmp_path):
         session.game.pending_treasure_draw = None
         session.game.pending_trader_draw = None
         if mode == "versus":
-            session.action({"action": "boat_answer", "text": "today"}, seat=0)
-            session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
+                session.action({"action": "boat_choice", "choice": 0}, seat=0)
+                session.action({"action": "boat_choice", "choice": 0}, seat=1)
         session.game.state.current_player = 0
         session._save()
         loaded = load(path)
@@ -430,9 +429,8 @@ def test_legacy_state_without_names_loads_with_empty_mapping(tmp_path):
     assert loaded is not None
     assert loaded[3] == {}
     assert loaded[4] == {
-        "answers": {},
-        "times": {},
-        "stage": "date",
+        "choices": {},
+        "stage": "choice",
         "result": None,
         "decided": True,
     }

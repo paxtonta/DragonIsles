@@ -11,7 +11,6 @@ import threading
 import time
 from argparse import ArgumentParser
 from collections.abc import Sequence
-from datetime import date
 from http.cookies import SimpleCookie
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,17 +18,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from .boat import (
-    BoatAnswer,
-    BoatTime,
-    DATE_RANGE_OVERLAP_FOLLOWUP,
-    TIME_FOLLOWUP,
-    boat_answers_overlap,
-    current_pacific_date,
-    parse_boat_answer,
-    parse_boat_time,
-    resolve_first_seat,
-)
 from .bot import Decision
 from .cards import Card
 from .cli import _encounter_mechanics
@@ -59,11 +47,8 @@ class WebSession:
         self.mode = mode
         self.state_path = state_path
         self.seat_names: dict[int, str] = {}
-        self.boat_answers: dict[int, BoatAnswer] = {}
-        self.boat_clarifications: dict[int, tuple[tuple[str, date], ...]] = {}
-        self.boat_times: dict[int, BoatTime] = {}
-        self.boat_time_open = False
-        self.boat_time_followups: dict[int, str] = {}
+        self.boat_choices: dict[int, int] = {}
+        self.boat_choice_messages: dict[int, str] = {}
         self._first_turn_result: str | None = None
         self.first_turn_decided = False
         self._reset()
@@ -113,11 +98,8 @@ class WebSession:
         else:
             self.game = Game(encounters, interaction=interaction)
         self._apply_seat_names()
-        self.boat_answers = {}
-        self.boat_clarifications = {}
-        self.boat_times = {}
-        self.boat_time_open = False
-        self.boat_time_followups = {}
+        self.boat_choices = {}
+        self.boat_choice_messages = {}
         self._first_turn_result = (
             "Human goes first." if self.mode == "bot" else None
         )
@@ -159,31 +141,20 @@ class WebSession:
             self.game = game
             self.game.interaction = self._interaction()
             boat = boat or {
-                "answers": {},
-                "times": {},
-                "stage": "date",
+                "choices": {},
+                "stage": "choice",
                 "result": None,
                 "decided": True,
             }
-            self.boat_answers = {
-                seat: answer
-                for seat, raw in boat["answers"].items()
-                if (
-                    answer := parse_boat_answer(raw, current_pacific_date())
-                ).tier > 0
+            self.boat_choices = {
+                int(seat): int(choice)
+                for seat, choice in boat.get("choices", {}).items()
+                if int(choice) in (0, 1)
             }
-            self.boat_times = {
-                seat: parsed
-                for seat, raw in boat.get("times", {}).items()
-                if (parsed := parse_boat_time(raw)) is not None
-            }
+            self.boat_choice_messages = {}
             if self.mode == "versus":
                 self._first_turn_result = boat["result"]
                 self.first_turn_decided = boat["decided"]
-                self.boat_time_open = (
-                    boat.get("stage", "date") == "time"
-                    and not self.first_turn_decided
-                )
             elif self.mode == "bot":
                 first_turn = boat.get(
                     "first_turn", {"result": None, "decided": True}
@@ -192,14 +163,10 @@ class WebSession:
                 self.first_turn_decided = True
                 if not first_turn["decided"]:
                     self.game.state.current_player = 0
-                self.boat_time_open = False
             else:
                 self._first_turn_result = None
                 self.first_turn_decided = True
                 self.game.state.current_player = 0
-                self.boat_time_open = False
-            self.boat_clarifications = {}
-            self.boat_time_followups = {}
             self._apply_seat_names()
             self.pending = {}
             self.pending_challenge = None
@@ -225,19 +192,10 @@ class WebSession:
         ):
             return
         boat = {
-            "answers": {
-                seat: answer.raw for seat, answer in self.boat_answers.items()
-            },
+            "choices": self.boat_choices,
             "result": self.boat_result if self.mode == "versus" else None,
             "decided": self.first_turn_decided if self.mode == "versus" else True,
-            "times": {
-                seat: answer.raw for seat, answer in self.boat_times.items()
-            },
-            "stage": (
-                "time"
-                if self.mode == "versus" and self.boat_time_open
-                else "date"
-            ),
+            "stage": "choice",
         }
         first_turn = (
             None
@@ -398,18 +356,8 @@ class WebSession:
             if action == "new_game":
                 self.new_game()
                 return
-            if action == "boat_time" and self.mode != "versus":
-                raise ValueError("time question is unavailable in bot mode")
-            if action == "boat_answer" and self.boat_time_open:
-                raise ValueError("the boat date answer is no longer open")
             if not self.first_turn_decided:
-                allowed = (
-                    "boat_time"
-                    if self.mode == "versus" and self.boat_time_open
-                    else "boat_answer"
-                    if self.mode == "versus"
-                    else "first_turn"
-                )
+                allowed = "boat_choice" if self.mode == "versus" else "first_turn"
                 if action != allowed:
                     message = (
                         "answer the boat question first"
@@ -418,121 +366,38 @@ class WebSession:
                     )
                     raise ValueError(message)
             if action == "first_turn":
-                raise ValueError("first-turn choice is unavailable; Human goes first")
-            if action == "boat_answer":
+                    raise ValueError(
+                        "first-turn choice is unavailable; Devin goes first"
+                    )
+            if action == "boat_choice":
                 if self.mode != "versus":
-                    raise ValueError("boat question is unavailable in bot mode")
+                    raise ValueError("boat choice is unavailable in bot mode")
                 if self.first_turn_decided:
                     raise ValueError("the boat question has already been answered")
-                text = _clean_text(payload.get("text"), 60)
-                opponent_answer = self.boat_answers.get(1 - seat)
-                answer = parse_boat_answer(
-                    text,
-                    current_pacific_date(),
-                    reference=opponent_answer,
-                )
-                if answer.tier == 0:
-                    if answer.clarifications:
-                        self.boat_clarifications[seat] = answer.clarifications
-                    raise ValueError(
-                        answer.followup
-                        or (
-                            'I could not read that. Try a date like "June 7, 2026", '
-                            '"two weeks ago", or "never".'
-                        )
-                    )
-                if opponent_answer and boat_answers_overlap(answer, opponent_answer):
-                    same_date = (
-                        answer.date_end is None
-                        and opponent_answer.date_end is None
-                        and answer.date == opponent_answer.date
-                    )
-                    if not same_date:
-                        raise ValueError(DATE_RANGE_OVERLAP_FOLLOWUP)
-                self.boat_clarifications.pop(seat, None)
-                self.boat_answers[seat] = answer
-                if len(self.boat_answers) == 2:
-                    first, second = (
-                        self.boat_answers[0],
-                        self.boat_answers[1],
-                    )
-                    if (
-                        first.tier == 3
-                        and second.tier == 3
-                        and first.date_end is None
-                        and second.date_end is None
-                        and first.date == second.date
-                    ):
-                        self.boat_time_open = True
-                    else:
-                        winner, result = resolve_first_seat(
-                            self.boat_answers,
-                            self.game.rng,
-                            {
-                                index: self.game.state.players[index].name
-                                for index in (0, 1)
-                            },
-                        )
-                        self.game.state.current_player = winner
-                        self.boat_result = result
-                        self.first_turn_decided = True
-                        self.events.append(result)
-                self.revision += 1
-                return
-            if action == "boat_time":
-                if self.first_turn_decided or not self.boat_time_open:
-                    raise ValueError("the time question is not open")
-                if seat in self.boat_times and seat not in self.boat_time_followups:
-                    raise ValueError("you have already answered the time question")
-                text = _clean_text(payload.get("text"), 60)
-                parsed = parse_boat_time(text)
-                if parsed is None:
-                    raise ValueError(
-                        'I could not read that time. Try "9am", "2:30pm", '
-                        '"14:00", or "17:00 et".'
-                    )
-                self.boat_time_followups.pop(seat, None)
-                self.boat_times[seat] = parsed
-                if len(self.boat_times) == 2:
-                    names = {
-                        index: self.game.state.players[index].name
-                        for index in (0, 1)
-                    }
-                    result = resolve_first_seat(
-                        self.boat_answers,
-                        self.game.rng,
-                        names,
-                        times=self.boat_times,
-                    )
-                    if result is None:
-                        vague_seats = [
-                            index
-                            for index, answer in self.boat_times.items()
-                            if answer.start != answer.end
-                        ]
-                        if not vague_seats:
-                            self.boat_times.clear()
-                            self.boat_time_followups = {
-                                0: TIME_FOLLOWUP,
-                                1: TIME_FOLLOWUP,
-                            }
-                        for index in vague_seats:
-                            del self.boat_times[index]
-                            self.boat_time_followups[index] = TIME_FOLLOWUP
+                choice = payload.get("choice")
+                if choice not in (0, 1):
+                    raise ValueError("choose who traveled by boat most recently")
+                self.boat_choices[seat] = choice
+                self.boat_choice_messages.pop(seat, None)
+                if len(self.boat_choices) == 2:
+                    if self.boat_choices[0] != self.boat_choices[1]:
+                        self.boat_choices.clear()
+                        message = "Both players must choose the same person."
+                        self.boat_choice_messages = {0: message, 1: message}
                         self.revision += 1
-                        if seat in vague_seats or not vague_seats:
-                            self._save()
-                            raise ValueError(TIME_FOLLOWUP)
-                        return
-                    winner, explanation = result
+                        self._save()
+                        raise ValueError(message)
+                    winner = self.boat_choices[0]
+                    winner_name = self.game.state.players[winner].name
+                    result = f"{winner_name} traveled by boat most recently and goes first."
                     self.game.state.current_player = winner
-                    self.boat_result = explanation
+                    self.boat_result = result
                     self.first_turn_decided = True
-                    self.boat_time_open = False
-                    self.boat_time_followups = {}
-                    self.events.append(explanation)
+                    self.events.append(result)
                 self.revision += 1
                 return
+            if action in {"boat_answer", "boat_time"}:
+                raise ValueError("choose one of the two boat options")
             if self.game.state.game_over:
                 raise ValueError("the game is over")
             if action == "continue_bot":
@@ -994,41 +859,22 @@ class WebSession:
             if self.mode == "versus":
                 if self.first_turn_decided:
                     state["boat"] = None
-                elif self.boat_time_open:
-                    answer = self.boat_times.get(seat)
-                    opponent_answer = self.boat_times.get(1 - seat)
-                    state["boat"] = {
-                        "stage": "time",
-                        "answered": answer is not None,
-                        "mine": answer.raw if answer is not None else None,
-                        "opponent": (
-                            opponent_answer.raw if opponent_answer is not None else None
-                        ),
-                        "waiting": (
-                            answer is not None and 1 - seat not in self.boat_times
-                        ),
-                        "message": self.boat_time_followups.get(seat),
-                    }
                 else:
-                    answer = self.boat_answers.get(seat)
-                    opponent_answer = self.boat_answers.get(1 - seat)
+                    opponent = self.game.state.players[1 - seat].name
                     state["boat"] = {
-                        "stage": "date",
-                        "answered": answer is not None,
-                        "mine": answer.raw if answer is not None else None,
-                        "opponent": (
-                            opponent_answer.raw if opponent_answer is not None else None
-                        ),
+                        "stage": "choice",
+                        "answered": seat in self.boat_choices,
+                        "choice": self.boat_choices.get(seat),
                         "waiting": (
-                            answer is not None and 1 - seat not in self.boat_answers
+                            seat in self.boat_choices
+                            and 1 - seat not in self.boat_choices
                         ),
+                        "message": self.boat_choice_messages.get(seat),
+                        "choices": [
+                            {"value": seat, "label": "I did"},
+                            {"value": 1 - seat, "label": opponent},
+                        ],
                     }
-                    clarifications = self.boat_clarifications.get(seat)
-                    if clarifications:
-                        state["boat"]["clarifications"] = [
-                            {"label": label, "value": value.isoformat()}
-                            for label, value in clarifications
-                        ]
                 state["boat_result"] = self.boat_result
             elif self.mode == "bot":
                 state["first_turn"] = (
@@ -1185,7 +1031,7 @@ pre{white-space:pre-wrap}.events{max-height:180px;overflow:auto}
 </style></head>
 <body><main><h1>DragonIsles <button class=secondary id=theme-toggle onclick="toggleTheme()">Toggle theme</button> <button class=secondary type=button onclick="newGame()">New game</button></h1><div id="app">Loading…</div></main>
 <script>
-let S=null, selected=null, method=null, cards=[], rerollPicks=[], discardPicks=[], boatDraft=null, botTimer=null, requestInFlight=false, stateRevision=0, stateRequest=0;
+let S=null, selected=null, method=null, cards=[], rerollPicks=[], discardPicks=[], botTimer=null, requestInFlight=false, stateRevision=0, stateRequest=0;
 document.addEventListener('click',e=>{
  let target=e.target.closest('button,[type="checkbox"],.card,.die');
  if(target)console.log('[DragonIsles click]',JSON.stringify({
@@ -1198,7 +1044,7 @@ function setTheme(theme){document.documentElement.dataset.theme=theme;localStora
 function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
 function newGame(){post('/api/action',{action:'new_game'})}
 async function get(){let request=++stateRequest;let next=await (await fetch('/api/state')).json();if(request!==stateRequest)return;S=next;stateRevision++;render()}
-async function post(path,body){if(body.action==='skill'&&S)body.revision=S.revision;console.log('[DragonIsles action]',JSON.stringify({path:path,body:body,stateRevision:stateRevision,turn:S&&S.turn,humanTurn:S&&S.human_turn,challenge:S&&S.challenge}));if(S&&S.game_over&&body.action!=='new_game')return;if(requestInFlight)return;requestInFlight=true;try{if(body.action==='new_game'||body.action==='skill'){clearTimeout(botTimer);botTimer=null}let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d=await r.json();console.log('[DragonIsles response]',JSON.stringify({action:body.action,ok:r.ok,status:r.status,error:r.ok?null:d.error}));if(!r.ok){let boatText=body.action==='boat_answer'||body.action==='boat_time'?body.text:null;await get();if(boatText!==null){boatDraft=boatText;let input=document.getElementById('boat-answer');if(input)input.value=boatText}alert(d.error);return}if(body.action==='boat_answer'||body.action==='boat_time'||body.action==='new_game')boatDraft=null;if(body.action==='discard')discardPicks=[];selected=null;method=null;cards=[];rerollPicks=[];discardPicks=[];S=d;stateRevision++;render()}finally{requestInFlight=false}}
+async function post(path,body){if(body.action==='skill'&&S)body.revision=S.revision;console.log('[DragonIsles action]',JSON.stringify({path:path,body:body,stateRevision:stateRevision,turn:S&&S.turn,humanTurn:S&&S.human_turn,challenge:S&&S.challenge}));if(S&&S.game_over&&body.action!=='new_game')return;if(requestInFlight)return;requestInFlight=true;try{if(body.action==='new_game'||body.action==='skill'){clearTimeout(botTimer);botTimer=null}let r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d=await r.json();console.log('[DragonIsles response]',JSON.stringify({action:body.action,ok:r.ok,status:r.status,error:r.ok?null:d.error}));if(!r.ok){await get();alert(d.error);return}if(body.action==='discard')discardPicks=[];selected=null;method=null;cards=[];rerollPicks=[];discardPicks=[];S=d;stateRevision++;render()}finally{requestInFlight=false}}
 function esc(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 function encounterHtml(){return S.encounters.map((c,i)=>`<div class="card encounter ${selected===c.id?'selected':''}"${S.game_over?'':` onclick="pick('${c.id}')"`}><b>${i+1}. ${esc(c.name)}</b> <span class="${c.sea?'sea':'land'}">${c.sea?'SEA':'LAND'}</span><br>${esc(c.type)} · ${c.vp} VP · ${c.icons} icon(s)<br><span class="muted">${esc(c.mechanics)}</span></div>`).join('')}
@@ -1208,13 +1054,10 @@ function treasureHtml(t){return `<span class="treasure-card treasure-${esc(t.col
 function handHtml(){let disabled=S.game_over||S.boat||S.first_turn||(!S.human_turn&&S.mode==='versus')?'disabled':'';return S.hand.map(c=>{let id=`hand-card-${c.index}`;return `<label for="${id}"><input id="${id}" type=checkbox ${cards.includes(c.index)?'checked':''} ${disabled} value=${c.index} onchange="toggleCard(${c.index})"> ${cardHtml(c)}</label>`}).join('')}
 
 function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
- let prompt=S.boat.stage==='time'?'You both last travelled by boat on the same day. Roughly what time of day was that? Pacific unless you add a zone — e.g. "9am", "1 p.m.", "2:30pm", "14:00", "17:00 et".':'When did you last travel by boat? The more recent answer takes the first turn. Use "June 7, 2026" or a numeric date with hyphen, dot, or slash separators; ambiguous numeric dates will ask for clarification. If the other player has answered, you may say "later than that" or "earlier than that".';
- let opponentAnswer=S.boat.opponent?`<br>${S.opponent_name?`${esc(S.opponent_name)}'s`:'Opponent'} answer: ${esc(S.boat.opponent)}`:'';
- let choices=(S.boat.clarifications||[]).map(choice=>`<button onclick="chooseBoatClarification('${esc(choice.value)}')">${esc(choice.label)}</button>`).join('');
- if(S.boat.waiting)return `<div class=panel><b>${prompt}</b><br>Your answer: ${esc(S.boat.mine)}${opponentAnswer}<br><span class=muted>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}'s answer…`:'No other player has joined yet.'}</span></div>`;
- return `<div class=panel><b>${prompt}</b>${opponentAnswer}${S.boat.message?`<br><span class=muted>${esc(S.boat.message)}</span>`:''}${choices?`<br>${choices}`:''}<br><input id=boat-answer type=text maxlength=60 value="${esc(boatDraft!==null?boatDraft:(S.boat.mine||''))}" oninput="boatDraft=this.value"><button onclick="submitBoat()">Submit</button></div>`}
-function submitBoat(){let input=document.getElementById('boat-answer');post('/api/action',{action:S.boat.stage==='time'?'boat_time':'boat_answer',text:input.value})}
-function chooseBoatClarification(value){boatDraft=value;post('/api/action',{action:'boat_answer',text:value})}
+ let choices=(S.boat.choices||[]).map(choice=>`<button onclick="chooseBoat(${choice.value})">${esc(choice.label)}</button>`).join('');
+ if(S.boat.waiting)return `<div class=panel><b>Who traveled by boat most recently?</b><br>Your choice is submitted.<br><span class=muted>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}'s choice…`:'No other player has joined yet.'}</span></div>`;
+ return `<div class=panel><b>Who traveled by boat most recently?</b>${S.boat.message?`<br><span class=muted>${esc(S.boat.message)}</span>`:''}<br>${choices}</div>`}
+function chooseBoat(choice){post('/api/action',{action:'boat_choice',choice:choice})}
 function firstTurnHtml(){return ''}
 
 function challengeHtml(){let c=S.challenge;if(S.game_over||!c)return '';
@@ -1245,7 +1088,7 @@ function treasureChoiceHtml(){let t=S.treasure;if(S.game_over||!t)return '';
  return `<div class=panel><b>Treasure reward</b> — keep one of the two drawn treasures:<br>${choices}</div>`}
 
 function discardHtml(){let d=S.discard;if(S.game_over||!d)return '';
- if(d.player_is_bot||d.mine===false)return `<div class=panel><b>${esc(d.player)} is discarding</b> — ${d.count} card(s) remaining.</div>`;
+ if(d.player_is_bot||!d.mine)return `<div class=panel><b>${esc(d.player)} is discarding</b> — ${d.count} card(s) remaining.</div>`;
  let picks=S.hand.map(c=>{let id=`discard-card-${c.index}`;return `<label for="${id}"><input id="${id}" type=checkbox ${discardPicks.includes(c.index)?'checked':''} onchange="toggleDiscard(${c.index})"> ${cardHtml(c)}</label>`}).join('');
  return `<div class=panel><b>Choose discard</b> — select one card (${d.count} remaining):<br><div class=hand>${picks}</div><button onclick="post('/api/action',{action:'discard',cards:discardPicks})" ${discardPicks.length!==1?'disabled':''}>Discard selected</button></div>`}
 
@@ -1328,7 +1171,7 @@ async function refreshMethods(){if(S.boat||S.first_turn||!selected||(!S.human_tu
  if(method&&!o[method].enabled)method=null;
  syncChallengeButton(!!method)}
 function attempt(){if(S.boat||S.first_turn)return;rerollPicks=[];let payload={action:'attempt',encounter:selected,method,cards};cards=[];post('/api/action',payload)}
-setTheme(localStorage.getItem('dragonisles-theme')||'light');get();
+setTheme(localStorage.getItem('dragonisles-theme')||'dark');get();
 setInterval(()=>{if(S&&S.mode==='versus'&&!S.human_turn)get()},2000);
 setInterval(()=>{if(S&&(!S.mode||S.mode==='bot'||S.human_turn)&&!S.challenge&&!S.prepare&&!S.discard&&!S.treasure&&!S.trader)get()},3000);
 </script></body></html>"""
@@ -1391,7 +1234,7 @@ button{background:var(--control);color:var(--text);border:1px solid var(--border
 <script>
 function setTheme(theme){document.documentElement.dataset.theme=theme;try{localStorage.setItem('dragonisles-theme',theme)}catch{}}
 function toggleTheme(){setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
-try{setTheme(localStorage.getItem('dragonisles-theme')==='dark'?'dark':'light')}catch{setTheme('light')}
+try{setTheme(localStorage.getItem('dragonisles-theme')==='light'?'light':'dark')}catch{setTheme('dark')}
 async function join(event){event.preventDefault();let name=event.target.elements.name.value,passphrase=event.target.elements.passphrase.value;
  let response=await fetch('/api/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,passphrase})});
  if(response.ok)location.href='/';else{let message='Unable to join game.';try{let body=await response.json();if(body.error==='both seats are taken')message='This game already has two players.';else if(body.error==='invalid passphrase')message='That passphrase is not correct.'}catch{}document.getElementById('error').textContent=message}

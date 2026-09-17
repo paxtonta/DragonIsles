@@ -508,44 +508,17 @@ def test_bot_context_includes_opponents_visible_challenge_cards():
     assert context.opponent_challenge_cards == (Card("green", 5), Card("green", 6))
 
 
-def test_literal_policy_progresses_through_encounters_by_ease(monkeypatch):
+def test_literal_policy_chooses_highest_value_reachable_encounter():
     encounters = [
         Encounter("First", 1, 3, 3, 3),
-        Encounter("Second", 2, 6, 6, 6),
-        Encounter("Third", 3, 9, 9, 9),
-        Encounter("Hardest", 4, 12, 12, 12),
+        Encounter("Best", 4, 3, 3, 3),
     ]
-    hand = [
-        Card("red", 1),
-        Card("red", 2),
-        Card("blue", 1),
-        Card("green", 1),
-        Card("yellow", 1),
-    ]
-    policy = LiteralPolicy()
-    monkeypatch.setattr(
-        policy, "_encounter_is_winnable", lambda context, encounter: True
+    context = DecisionContext(
+        [Card("red", 1), Card("blue", 2)],
+        encounters,
     )
 
-    for completed, expected in (
-        (0, encounters[0]),
-        (1, encounters[0]),
-        (2, encounters[1]),
-        (3, encounters[1]),
-        (4, encounters[2]),
-        (5, encounters[2]),
-        (6, encounters[3]),
-    ):
-        assert (
-            policy._target_encounter(
-                DecisionContext(
-                    hand,
-                    encounters,
-                    completed_encounters=[encounters[0]] * completed,
-                )
-            )
-            == expected
-        )
+    assert LiteralPolicy()._target_encounter(context) == encounters[1]
 
 
 def test_literal_policy_clamps_doubled_ramp_for_short_rows():
@@ -562,25 +535,18 @@ def test_literal_policy_clamps_doubled_ramp_for_short_rows():
     )
 
 
-def test_literal_policy_falls_back_to_hardest_winnable_at_or_before_schedule(
-    monkeypatch,
-):
+def test_literal_policy_chooses_best_reachable_encounter_without_schedule():
     encounters = [
         Encounter("Easy", 1, 3, 3, 3),
-        Encounter("Winnable", 2, 6, 6, 6),
-        Encounter("Scheduled", 3, 9, 9, 9),
-        Encounter("Hardest", 4, 12, 12, 12),
+        Encounter("Best", 3, 3, 3, 3),
     ]
-    policy = LiteralPolicy()
-    monkeypatch.setattr(
-        policy,
-        "_encounter_is_winnable",
-        lambda context, encounter: encounter is encounters[1],
+    context = DecisionContext(
+        [Card("red", 1), Card("blue", 2)],
+        encounters,
+        completed_encounters=[encounters[0]] * 4,
     )
 
-    context = DecisionContext([], encounters, completed_encounters=[encounters[0]] * 4)
-
-    assert policy._target_encounter(context) == encounters[1]
+    assert LiteralPolicy()._target_encounter(context) == encounters[1]
 
 
 def test_literal_policy_keeps_a_winnable_scheduled_target(monkeypatch):
@@ -634,7 +600,7 @@ def test_endgame_policy_chooses_easiest_winnable_encounter_when_it_wins():
     assert LiteralPolicy()._target_encounter(context) == easy
 
 
-def test_endgame_policy_keeps_ramp_when_finishing_would_still_lose(monkeypatch):
+def test_endgame_policy_chooses_best_reachable_encounter_when_no_win_exists():
     easy = Encounter("Easy close", 1, 3, 3, 3)
     hard = Encounter("Hard close", 5, 9, 9, 9)
     completed = [Encounter(f"Done {index}", 1, 3, 3, 3) for index in range(7)]
@@ -648,11 +614,7 @@ def test_endgame_policy_keeps_ramp_when_finishing_would_still_lose(monkeypatch):
         opponent_character=CHARACTERS["Warrior"],
     )
     policy = LiteralPolicy()
-    monkeypatch.setattr(
-        policy, "_encounter_is_winnable", lambda context, encounter: True
-    )
-
-    assert policy._target_encounter(context) == hard
+    assert policy._target_encounter(context) == easy
 
 
 def test_endgame_policy_falls_back_when_hardest_slot_is_unwinnable(monkeypatch):

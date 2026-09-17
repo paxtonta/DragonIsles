@@ -168,7 +168,7 @@ export default function GameClient() {
       </CardContent></Card>
       {state.boat && <Card><CardContent><b>Who traveled by boat most recently?</b>
         {state.boat.message && <p role="alert">{state.boat.message}</p>}
-        {state.boat.waiting ? <p>Your choice is submitted. {waitingLabel}</p> : <div>{state.boat.choices.map(choice => <Button key={choice.value} variant={state.boat?.choice === choice.value ? "secondary" : "default"} onClick={() => void post({ action: "boat_choice", choice: choice.value })}>{choice.label}</Button>)}</div>}
+        {state.boat.waiting ? <p>Your choice is submitted. {waitingLabel}</p> : <div>{state.boat.choices.map(choice => <Button key={choice.value} aria-label={choice.label} variant={state.boat?.choice === choice.value ? "secondary" : "default"} onClick={() => void post({ action: "boat_choice", choice: choice.value })}>{choice.label}</Button>)}</div>}
       </CardContent></Card>}
       {state.mode === "versus" && !state.boat && !state.human_turn && <Card><CardContent>{waitingLabel}</CardContent></Card>}
       {state.game_over && <Card><CardHeader><CardTitle>Final scores</CardTitle></CardHeader><CardContent>{state.players.map(item => <div key={item.seat}>{displayName(item.name)}: <b>{item.score} VP</b></div>)}</CardContent></Card>}

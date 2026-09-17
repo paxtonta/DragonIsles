@@ -4,6 +4,7 @@ import random
 import re
 from http.server import ThreadingHTTPServer
 import threading
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -1419,10 +1420,21 @@ def test_versus_same_date_answers_open_time_tie_break():
 def test_versus_ambiguous_numeric_date_requests_clarification():
     session = WebSession("versus")
 
-    with pytest.raises(ValueError, match="Please clarify that numeric date"):
+    with pytest.raises(
+        ValueError,
+        match=r'Did you mean "June 7, 2026" or "July 6, 2026"\?',
+    ):
         session.action({"action": "boat_answer", "text": "06-07-2026"}, seat=0)
 
     assert session.boat_answers == {}
+    assert session.state(0)["boat"]["clarifications"] == [
+        {"label": "June 7, 2026", "value": "2026-06-07"},
+        {"label": "July 6, 2026", "value": "2026-07-06"},
+    ]
+
+    session.action({"action": "boat_answer", "text": "2026-06-07"}, seat=0)
+    assert session.boat_answers[0].date == date(2026, 6, 7)
+    assert "clarifications" not in session.state(0)["boat"]
 
 
 def test_versus_relative_boat_answer_uses_opponent_date():

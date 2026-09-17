@@ -102,7 +102,19 @@ def test_ambiguous_numeric_dates_request_clarification(text):
     answer = parse_boat_answer(text, TODAY)
     assert answer.tier == 0
     assert answer.date is None
-    assert answer.followup == DATE_FORMAT_FOLLOWUP
+    assert answer.followup.startswith(DATE_FORMAT_FOLLOWUP)
+    assert {choice for choice, _ in answer.clarifications} == {
+        "June 7, 2026",
+        "July 6, 2026",
+    }
+
+
+def test_ambiguous_numeric_dates_offer_ordered_interpretations():
+    answer = parse_boat_answer("07-06-2026", TODAY)
+    assert answer.followup == (
+        'Please clarify that numeric date. Did you mean '
+        '"July 6, 2026" or "June 7, 2026"?'
+    )
 
 
 def test_relative_date_answers_use_the_other_player_as_reference():

@@ -1090,6 +1090,7 @@ def test_web_refreshes_after_rejected_skill_choice():
 def test_web_preserves_boat_draft_across_refreshes():
     assert "boatDraft=null" in HTML
     assert "boatDraft!==null?boatDraft:(S.boat.mine||'')" in HTML
+    assert "S.boat.opponent" in HTML
     assert 'oninput="boatDraft=this.value"' in HTML
     assert "body.action==='boat_answer'||body.action==='boat_time'||body.action==='new_game')boatDraft=null" in HTML
     assert "let boatFocused=document.activeElement&&document.activeElement.id==='boat-answer'" in HTML
@@ -1343,12 +1344,14 @@ def test_versus_boat_answers_choose_first_seat_and_clear_gate():
         "stage": "date",
         "answered": True,
         "mine": "never",
+        "opponent": None,
         "waiting": True,
     }
     assert session.state(1)["boat"] == {
         "stage": "date",
         "answered": False,
         "mine": None,
+        "opponent": "never",
         "waiting": False,
     }
     session.action({"action": "boat_answer", "text": "today"}, seat=1)
@@ -1390,6 +1393,7 @@ def test_versus_childhood_boat_answer_requests_years_and_can_be_replaced():
         "stage": "date",
         "answered": True,
         "mine": "20 years ago",
+        "opponent": None,
         "waiting": True,
     }
 
@@ -1404,6 +1408,7 @@ def test_versus_same_date_answers_open_time_tie_break():
         "stage": "time",
         "answered": False,
         "mine": None,
+        "opponent": None,
         "waiting": False,
         "message": None,
     }
@@ -1411,7 +1416,7 @@ def test_versus_same_date_answers_open_time_tie_break():
         session.action({"action": "boat_answer", "text": "today"}, seat=0)
 
 
-def test_versus_time_answers_choose_later_time_and_hide_opponent():
+def test_versus_time_answers_choose_later_time_and_show_opponent():
     session = WebSession("versus")
     session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
     session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
@@ -1421,10 +1426,12 @@ def test_versus_time_answers_choose_later_time_and_hide_opponent():
         "stage": "time",
         "answered": True,
         "mine": "2:30pm",
+        "opponent": None,
         "waiting": True,
         "message": None,
     }
     assert session.state(1)["boat"]["mine"] is None
+    assert session.state(1)["boat"]["opponent"] == "2:30pm"
     session.action({"action": "boat_time", "text": "9am"}, seat=1)
 
     assert session.game.state.current_player == 0

@@ -1370,7 +1370,7 @@ def test_versus_unreadable_boat_answer_is_not_recorded():
 
     with pytest.raises(
         ValueError,
-        match=r'I could not read that\. Try a date like "June 7, 2026", "two weeks ago", or "never"\.',
+        match=r'Please enter a complete, valid date with a four-digit year',
     ):
         session.action({"action": "boat_answer", "text": "??? 123"}, seat=0)
 
@@ -1401,8 +1401,8 @@ def test_versus_childhood_boat_answer_requests_years_and_can_be_replaced():
 
 def test_versus_same_date_answers_open_time_tie_break():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "August 6"}, seat=1)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=0)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=1)
 
     assert session.first_turn_decided is False
     assert session.state(0)["boat"] == {
@@ -1446,6 +1446,26 @@ def test_versus_relative_boat_answer_uses_opponent_date():
     assert session.game.state.current_player == 1
 
 
+def test_versus_rejects_overlapping_range_against_existing_answer():
+    session = WebSession("versus")
+    session.action({"action": "boat_answer", "text": "June 7-9, 2026"}, seat=0)
+
+    with pytest.raises(ValueError, match="overlaps the other player's answer"):
+        session.action({"action": "boat_answer", "text": "June 9, 2026"}, seat=1)
+
+    assert 1 not in session.boat_answers
+
+
+def test_versus_rejects_range_overlapping_existing_answer():
+    session = WebSession("versus")
+    session.action({"action": "boat_answer", "text": "June 9, 2026"}, seat=0)
+
+    with pytest.raises(ValueError, match="overlaps the other player's answer"):
+        session.action({"action": "boat_answer", "text": "June 7-9, 2026"}, seat=1)
+
+    assert 1 not in session.boat_answers
+
+
 def test_versus_relative_boat_answer_requires_opponent_date():
     session = WebSession("versus")
 
@@ -1457,8 +1477,8 @@ def test_versus_relative_boat_answer_requires_opponent_date():
 
 def test_versus_time_answers_choose_later_time_and_show_opponent():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=0)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=1)
     session.action({"action": "boat_time", "text": "2:30pm"}, seat=0)
 
     assert session.state(0)["boat"] == {
@@ -1481,8 +1501,8 @@ def test_versus_time_answers_choose_later_time_and_show_opponent():
 
 def test_versus_overlapping_vague_time_is_discarded_and_reasked():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=0)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=1)
     session.action({"action": "boat_time", "text": "9am"}, seat=0)
 
     with pytest.raises(
@@ -1499,8 +1519,8 @@ def test_versus_overlapping_vague_time_is_discarded_and_reasked():
 
 def test_versus_non_overlapping_vague_times_choose_later_range():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=0)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=1)
     session.action({"action": "boat_time", "text": "morning"}, seat=0)
     session.action({"action": "boat_time", "text": "night"}, seat=1)
 
@@ -1510,8 +1530,8 @@ def test_versus_non_overlapping_vague_times_choose_later_range():
 
 def test_versus_exact_equal_times_reask_and_both_never_skip_time_round():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=0)
+    session.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=1)
     session.action({"action": "boat_time", "text": "9am"}, seat=0)
     with pytest.raises(ValueError, match="Give a clock time"):
         session.action({"action": "boat_time", "text": "9am"}, seat=1)

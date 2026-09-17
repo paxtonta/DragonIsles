@@ -221,15 +221,15 @@ def test_pending_boat_question_round_trips(tmp_path):
 def test_pending_boat_time_round_trips(tmp_path):
     path = tmp_path / "boat-time.pkl"
     source = WebSession("versus", state_path=path)
-    source.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    source.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
+    source.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=0)
+    source.action({"action": "boat_answer", "text": "August 6, 2026"}, seat=1)
     source.action({"action": "boat_time", "text": "9am"}, seat=0)
 
     loaded = load(path)
 
     assert loaded is not None
     assert loaded[4] == {
-        "answers": {0: "6 Aug", 1: "6 Aug"},
+        "answers": {0: "August 6, 2026", 1: "August 6, 2026"},
         "times": {0: "9am"},
         "stage": "time",
         "result": None,

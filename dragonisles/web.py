@@ -22,7 +22,10 @@ from urllib.parse import urlparse
 from .boat import (
     BoatAnswer,
     BoatTime,
+    DATE_RANGE_OVERLAP_FOLLOWUP,
     TIME_FOLLOWUP,
+    boat_answers_overlap,
+    current_pacific_date,
     parse_boat_answer,
     parse_boat_time,
     resolve_first_seat,
@@ -166,7 +169,7 @@ class WebSession:
                 seat: answer
                 for seat, raw in boat["answers"].items()
                 if (
-                    answer := parse_boat_answer(raw, date.today())
+                    answer := parse_boat_answer(raw, current_pacific_date())
                 ).tier > 0
             }
             self.boat_times = {
@@ -425,7 +428,7 @@ class WebSession:
                 opponent_answer = self.boat_answers.get(1 - seat)
                 answer = parse_boat_answer(
                     text,
-                    date.today(),
+                    current_pacific_date(),
                     reference=opponent_answer,
                 )
                 if answer.tier == 0:
@@ -438,6 +441,14 @@ class WebSession:
                             '"two weeks ago", or "never".'
                         )
                     )
+                if opponent_answer and boat_answers_overlap(answer, opponent_answer):
+                    same_date = (
+                        answer.date_end is None
+                        and opponent_answer.date_end is None
+                        and answer.date == opponent_answer.date
+                    )
+                    if not same_date:
+                        raise ValueError(DATE_RANGE_OVERLAP_FOLLOWUP)
                 self.boat_clarifications.pop(seat, None)
                 self.boat_answers[seat] = answer
                 if len(self.boat_answers) == 2:
@@ -448,6 +459,8 @@ class WebSession:
                     if (
                         first.tier == 3
                         and second.tier == 3
+                        and first.date_end is None
+                        and second.date_end is None
                         and first.date == second.date
                     ):
                         self.boat_time_open = True

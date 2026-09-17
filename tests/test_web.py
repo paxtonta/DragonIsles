@@ -4,7 +4,6 @@ import random
 import re
 from http.server import ThreadingHTTPServer
 import threading
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -729,8 +728,8 @@ def test_browser_lets_human_choose_hand_limit_discards():
 def test_versus_opponent_sees_public_challenge_without_controls():
     session = WebSession("versus")
     first, _ = session.game.state.players
-    session.action({"action": "boat_answer", "text": "today"}, seat=0)
-    session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
+    session.action({"action": "boat_choice", "choice": 0}, seat=0)
+    session.action({"action": "boat_choice", "choice": 0}, seat=1)
     session.game.state.current_player = 0
     encounter = Encounter("Visible", 1, 1, 1, 1)
     session.game.state.encounters[0] = encounter
@@ -1074,11 +1073,7 @@ def test_web_monk_can_choose_sneak_for_consecutive_skill_upgrades():
 
 
 def test_web_refreshes_after_rejected_skill_choice():
-    assert (
-        "if(!r.ok){let boatText=body.action==='boat_answer'||body.action==='boat_time'?body.text:null;await get();"
-        in HTML
-    )
-    assert "if(input)input.value=boatText" in HTML
+    assert "if(!r.ok){await get();alert(d.error);return}" in HTML
     assert "requestInFlight" in HTML
     assert "stateRevision" in HTML
     assert "stateRequest" in HTML
@@ -1089,14 +1084,9 @@ def test_web_refreshes_after_rejected_skill_choice():
 
 
 def test_web_preserves_boat_draft_across_refreshes():
-    assert "boatDraft=null" in HTML
-    assert "boatDraft!==null?boatDraft:(S.boat.mine||'')" in HTML
-    assert "S.boat.opponent" in HTML
-    assert 'oninput="boatDraft=this.value"' in HTML
-    assert "body.action==='boat_answer'||body.action==='boat_time'||body.action==='new_game')boatDraft=null" in HTML
-    assert "let boatFocused=document.activeElement&&document.activeElement.id==='boat-answer'" in HTML
-    assert "input.setSelectionRange(input.value.length,input.value.length)" in HTML
-    assert "if(boatText!==null){boatDraft=boatText" in HTML
+    assert "Who traveled by boat most recently?" in HTML
+    assert "action:'boat_choice'" in HTML
+    assert "S.boat.choices" in HTML
 
 
 def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
@@ -1135,14 +1125,11 @@ def test_web_refreshes_method_buttons_after_render():
     assert "b.disabled=true;b.title=''" in HTML
 
 
-def test_web_time_boat_prompt_uses_same_input_and_action():
-    assert "S.boat.stage==='time'" in HTML
-    assert "action:S.boat.stage==='time'?'boat_time':'boat_answer'" in HTML
-    assert (
-        'You both last travelled by boat on the same day. Roughly what time of day was that?'
-        in HTML
-    )
-    assert 'id=boat-answer' in HTML
+def test_web_boat_prompt_uses_two_choice_buttons():
+    assert "Who traveled by boat most recently?" in HTML
+    assert "action:'boat_choice'" in HTML
+    assert "chooseBoat(${choice.value})" in HTML
+    assert "id=boat-answer" not in HTML
 
 
 def test_web_logs_clicks_and_action_results_to_the_console():
@@ -1277,8 +1264,8 @@ def test_versus_game_has_two_human_players_and_seat_state():
 def test_versus_turn_gating_and_full_turn_handoff():
     session = WebSession("versus")
     player_one, player_two = session.game.state.players
-    session.action({"action": "boat_answer", "text": "today"}, seat=0)
-    session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
+    session.action({"action": "boat_choice", "choice": 0}, seat=0)
+    session.action({"action": "boat_choice", "choice": 0}, seat=1)
     session.game.state.current_player = 0
 
     with pytest.raises(ValueError, match="it is not your turn"):
@@ -1320,8 +1307,8 @@ def test_versus_state_hides_opponent_hand_and_potion_kinds():
 
 def test_versus_rejects_bot_continuation_actions():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "today"}, seat=0)
-    session.action({"action": "boat_answer", "text": "yesterday"}, seat=1)
+    session.action({"action": "boat_choice", "choice": 0}, seat=0)
+    session.action({"action": "boat_choice", "choice": 0}, seat=1)
 
     for action in ("continue_bot", "continue_bot_discard"):
         with pytest.raises(ValueError, match="unavailable in versus mode"):
@@ -1340,206 +1327,66 @@ def test_versus_boat_answers_choose_first_seat_and_clear_gate():
     session = WebSession("versus")
     session.game.state.current_player = 1
 
-    session.action({"action": "boat_answer", "text": "never"}, seat=0)
+    session.action({"action": "boat_choice", "choice": 0}, seat=0)
     assert session.state(0)["boat"] == {
-        "stage": "date",
+        "stage": "choice",
         "answered": True,
-        "mine": "never",
-        "opponent": None,
+        "choice": 0,
         "waiting": True,
+        "message": None,
+        "choices": [
+            {"value": 0, "label": "I did"},
+            {"value": 1, "label": session.game.state.players[1].name},
+        ],
     }
     assert session.state(1)["boat"] == {
-        "stage": "date",
+        "stage": "choice",
         "answered": False,
-        "mine": None,
-        "opponent": "never",
-        "waiting": False,
-    }
-    session.action({"action": "boat_answer", "text": "today"}, seat=1)
-
-    assert session.game.state.current_player == 1
-    assert session.state(0)["boat"] is None
-    assert session.state(1)["boat"] is None
-    assert session.state(0)["boat_result"] == session.state(1)["boat_result"]
-    assert 'Player 1: "never"' in session.state(0)["boat_result"]
-    assert 'Player 2: "today"' in session.state(0)["boat_result"]
-
-
-def test_versus_unreadable_boat_answer_is_not_recorded():
-    session = WebSession("versus")
-
-    with pytest.raises(
-        ValueError,
-        match=r'I could not read that\. Try a date like "June 7, 2026", "two weeks ago", or "never"\.',
-    ):
-        session.action({"action": "boat_answer", "text": "??? 123"}, seat=0)
-
-    assert session.boat_answers == {}
-    assert session.state(0)["boat"]["answered"] is False
-
-
-def test_versus_childhood_boat_answer_requests_years_and_can_be_replaced():
-    session = WebSession("versus")
-
-    with pytest.raises(
-        ValueError,
-        match=r'Roughly how many years ago was that\? Give a number of years, e\.g\. "20 years ago"\.',
-    ):
-        session.action({"action": "boat_answer", "text": "as a kid"}, seat=0)
-
-    assert session.boat_answers == {}
-    session.action({"action": "boat_answer", "text": "20 years ago"}, seat=0)
-    assert session.boat_answers[0].raw == "20 years ago"
-    assert session.state(0)["boat"] == {
-        "stage": "date",
-        "answered": True,
-        "mine": "20 years ago",
-        "opponent": None,
-        "waiting": True,
-    }
-
-
-def test_versus_same_date_answers_open_time_tie_break():
-    session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "August 6"}, seat=1)
-
-    assert session.first_turn_decided is False
-    assert session.state(0)["boat"] == {
-        "stage": "time",
-        "answered": False,
-        "mine": None,
-        "opponent": None,
+        "choice": None,
         "waiting": False,
         "message": None,
+        "choices": [
+            {"value": 1, "label": "I did"},
+            {"value": 0, "label": session.game.state.players[0].name},
+        ],
     }
-    with pytest.raises(ValueError, match="boat date answer is no longer open"):
-        session.action({"action": "boat_answer", "text": "today"}, seat=0)
-
-
-def test_versus_ambiguous_numeric_date_requests_clarification():
-    session = WebSession("versus")
-
-    with pytest.raises(
-        ValueError,
-        match=r'Did you mean "June 7, 2026" or "July 6, 2026"\?',
-    ):
-        session.action({"action": "boat_answer", "text": "06-07-2026"}, seat=0)
-
-    assert session.boat_answers == {}
-    assert session.state(0)["boat"]["clarifications"] == [
-        {"label": "June 7, 2026", "value": "2026-06-07"},
-        {"label": "July 6, 2026", "value": "2026-07-06"},
-    ]
-
-    session.action({"action": "boat_answer", "text": "2026-06-07"}, seat=0)
-    assert session.boat_answers[0].date == date(2026, 6, 7)
-    assert "clarifications" not in session.state(0)["boat"]
-
-
-def test_versus_relative_boat_answer_uses_opponent_date():
-    session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "June 7, 2026"}, seat=0)
-    session.action({"action": "boat_answer", "text": "Later than that"}, seat=1)
-
-    assert session.first_turn_decided is True
-    assert session.game.state.current_player == 1
-
-
-def test_versus_relative_boat_answer_requires_opponent_date():
-    session = WebSession("versus")
-
-    with pytest.raises(ValueError, match="other player must submit"):
-        session.action({"action": "boat_answer", "text": "Earlier than that"}, seat=0)
-
-    assert session.boat_answers == {}
-
-
-def test_versus_time_answers_choose_later_time_and_show_opponent():
-    session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
-    session.action({"action": "boat_time", "text": "2:30pm"}, seat=0)
-
-    assert session.state(0)["boat"] == {
-        "stage": "time",
-        "answered": True,
-        "mine": "2:30pm",
-        "opponent": None,
-        "waiting": True,
-        "message": None,
-    }
-    assert session.state(1)["boat"]["mine"] is None
-    assert session.state(1)["boat"]["opponent"] == "2:30pm"
-    session.action({"action": "boat_time", "text": "9am"}, seat=1)
+    session.action({"action": "boat_choice", "choice": 0}, seat=1)
 
     assert session.game.state.current_player == 0
     assert session.state(0)["boat"] is None
-    assert 'at 2:30pm' in session.state(0)["boat_result"]
-    assert 'at 9am' in session.state(0)["boat_result"]
+    assert session.state(1)["boat"] is None
+    assert session.state(0)["boat_result"] == session.state(1)["boat_result"]
+    assert session.game.state.players[0].name in session.state(0)["boat_result"]
 
 
-def test_versus_overlapping_vague_time_is_discarded_and_reasked():
+def test_versus_opposite_boat_choices_reset_both_answers():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
-    session.action({"action": "boat_time", "text": "9am"}, seat=0)
 
-    with pytest.raises(
-        ValueError,
-        match=r"That is not precise enough to settle the tie\. Give a clock time, e\.g\. \"9am\"\.",
-    ):
-        session.action({"action": "boat_time", "text": "morning"}, seat=1)
-    assert session.boat_times[0].raw == "9am"
-    assert 1 not in session.boat_times
-    assert session.state(1)["boat"]["message"] == (
-        'That is not precise enough to settle the tie. Give a clock time, e.g. "9am".'
+    session.action({"action": "boat_choice", "choice": 0}, seat=0)
+    with pytest.raises(ValueError, match="Both players must choose the same person"):
+        session.action({"action": "boat_choice", "choice": 1}, seat=1)
+
+    assert session.boat_choices == {}
+    assert session.state(0)["boat"]["answered"] is False
+    assert session.state(1)["boat"]["answered"] is False
+    assert session.state(0)["boat"]["message"] == (
+        "Both players must choose the same person."
     )
 
 
-def test_versus_non_overlapping_vague_times_choose_later_range():
+def test_versus_boat_choice_can_be_replaced_before_agreement():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
-    session.action({"action": "boat_time", "text": "morning"}, seat=0)
-    session.action({"action": "boat_time", "text": "night"}, seat=1)
 
-    assert session.game.state.current_player == 1
-    assert "travelled later that day" in session.state(0)["boat_result"]
+    session.action({"action": "boat_choice", "choice": 0}, seat=0)
+    session.action({"action": "boat_choice", "choice": 1}, seat=0)
+    assert session.boat_choices == {0: 1}
+    assert session.state(0)["boat"]["waiting"] is True
 
 
-def test_versus_exact_equal_times_reask_and_both_never_skip_time_round():
+def test_versus_free_form_boat_answers_are_not_accepted():
     session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=0)
-    session.action({"action": "boat_answer", "text": "6 Aug"}, seat=1)
-    session.action({"action": "boat_time", "text": "9am"}, seat=0)
-    with pytest.raises(ValueError, match="Give a clock time"):
-        session.action({"action": "boat_time", "text": "9am"}, seat=1)
-    assert session.state(0)["boat"]["answered"] is False
-    assert session.state(1)["boat"]["answered"] is False
-    assert session.state(0)["boat"]["message"]
-
-    never = WebSession("versus")
-    never.action({"action": "boat_answer", "text": "never"}, seat=0)
-    never.action({"action": "boat_answer", "text": "never"}, seat=1)
-    assert never.state(0)["boat"] is None
-    assert not hasattr(never, "boat_time_open") or not never.boat_time_open
-
-
-def test_versus_time_rejects_bot_mode_and_unreadable_text():
-    bot = WebSession("bot")
-    with pytest.raises(ValueError, match="time question is unavailable"):
-        bot.action({"action": "boat_time", "text": "9am"})
-
-    session = WebSession("versus")
-    session.action({"action": "boat_answer", "text": "today"}, seat=0)
-    session.action({"action": "boat_answer", "text": "today"}, seat=1)
-    with pytest.raises(
-        ValueError,
-        match=r'I could not read that time\. Try "9am", "2:30pm", "14:00", or "17:00 et"\.',
-    ):
-        session.action({"action": "boat_time", "text": "don't know"}, seat=0)
-    assert session.boat_times == {}
+    with pytest.raises(ValueError, match="answer the boat question first"):
+        session.action({"action": "boat_answer", "text": "June 7, 2026"}, seat=0)
 
 
 def test_bot_mode_starts_with_human_first():

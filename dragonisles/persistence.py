@@ -37,9 +37,8 @@ def save(
             "boat": boat
             if boat is not None
             else {
-                "answers": {},
-                "times": {},
-                "stage": "date",
+                "choices": {},
+                "stage": "choice",
                 "result": None,
                 "decided": True,
             },
@@ -102,23 +101,50 @@ def load(
             )
         ):
             raise ValueError("invalid player names")
+        new_choices = isinstance(boat, dict) and "choices" in boat and isinstance(
+            boat.get("choices"), dict
+        )
+        old_answers = isinstance(boat, dict) and "answers" in boat and isinstance(
+            boat.get("answers"), dict
+        )
         if (
             not isinstance(boat, dict)
-            or not isinstance(boat.get("answers"), dict)
-            or any(
-                type(seat) is not int
-                or seat not in (0, 1)
-                or not isinstance(answer, str)
-                for seat, answer in boat["answers"].items()
+            or not (new_choices or old_answers)
+            or (
+                new_choices
+                and any(
+                    type(seat) is not int
+                    or seat not in (0, 1)
+                    or type(choice) is not int
+                    or choice not in (0, 1)
+                    for seat, choice in boat.get("choices", {}).items()
+                )
             )
-            or not isinstance(boat.get("times", {}), dict)
-            or any(
-                type(seat) is not int
-                or seat not in (0, 1)
-                or not isinstance(raw, str)
-                for seat, raw in boat.get("times", {}).items()
+            or (
+                old_answers
+                and any(
+                    type(seat) is not int
+                    or seat not in (0, 1)
+                    or not isinstance(answer, str)
+                    for seat, answer in boat.get("answers", {}).items()
+                )
             )
-            or boat.get("stage", "date") not in {"date", "time"}
+            or (
+                old_answers
+                and (
+                    not isinstance(boat.get("times", {}), dict)
+                    or any(
+                        type(seat) is not int
+                        or seat not in (0, 1)
+                        or not isinstance(raw, str)
+                        for seat, raw in boat.get("times", {}).items()
+                    )
+                )
+            )
+            or (
+                not new_choices
+                and boat.get("stage", "date") not in {"date", "time"}
+            )
             or not isinstance(boat.get("decided"), bool)
             or not (
                 boat.get("result") is None
@@ -136,9 +162,8 @@ def load(
         ):
             raise ValueError("invalid first-turn state")
         normalized_boat = {
-            "answers": dict(boat["answers"]),
-            "times": dict(boat.get("times", {})),
-            "stage": boat.get("stage", "date"),
+            "choices": dict(boat.get("choices", {})) if new_choices else {},
+            "stage": "choice",
             "result": boat["result"],
             "decided": boat["decided"],
         }

@@ -911,15 +911,15 @@ class LiteralPolicy:
         method: str,
         rolled_total: int,
     ) -> bool:
-        """Spend a rescuing potion when the current gain justifies its cost."""
+        """Spend a potion only when success beats taking the failure potion."""
         plus_twos = sum(potion.kind == PLUS_TWO for potion in context.potions)
-        if plus_twos > 1:
-            return True
-        if context.character is not None and len(context.hand) >= (
-            context.character.starting_hand_limit - 1
-        ):
-            return True
-        return encounter.victory_points >= 5 or encounter.is_sea
+        if plus_twos == 0 or rolled_total >= encounter.target_for(method):
+            return False
+        if encounter.target_for(method) - rolled_total > 2:
+            return False
+        potion_value = 1.0 / plus_twos
+        success_value = _encounter_value(context, encounter, method)
+        return success_value - potion_value > potion_value
 
     def choose_reroll_indices(
         self,

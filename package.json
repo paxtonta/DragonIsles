@@ -1,0 +1,10 @@
+{
+  "name": "dragonisles",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix frontend run build"
+  },
+  "dependencies": {
+    "next": "15.5.21"
+  }
+}

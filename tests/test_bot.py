@@ -10,9 +10,11 @@ from dragonisles.bot import (
 )
 from dragonisles.cards import Card
 from dragonisles.characters import CHARACTERS
+from dragonisles.combos import Combo
 from dragonisles.encounters import ChallengeReward, Encounter
 from dragonisles.engine import Game, Player, RulesConfig
 from dragonisles.potions import DRAW_TWO, PLUS_TWO, PURGE, PotionToken
+from dragonisles.treasures import expected_treasure_value
 
 
 EASY = Encounter("Easy", 2, 3, 3, 3)
@@ -164,6 +166,52 @@ def test_bot_spends_plus_two_when_success_beats_failure_potion():
     encounter = Encounter("Three points", 3, 5, 5, 5)
 
     assert policy.choose_plus_two_after_roll(context, encounter, "strike", 4)
+
+
+def test_bot_prioritizes_probability_when_closing_out_a_win():
+    policy = LiteralPolicy()
+    encounter = Encounter("Final", 1, 2, 2, 2)
+    context = DecisionContext([Card("red", 1), Card("red", 2)], [encounter])
+    one_card = (Combo("strike", (Card("red", 1),)), 5 / 6)
+    two_cards = (
+        Combo("strike", (Card("red", 1), Card("red", 2))),
+        1.0,
+    )
+
+    method, result = policy._method_choice(
+        context,
+        encounter,
+        [("strike", one_card), ("strike", two_cards)],
+        maximize_probability=True,
+    )
+
+    assert method == "strike"
+    assert result == two_cards
+
+
+def test_warrior_draw_reward_is_not_probability_discounted(monkeypatch):
+    policy = LiteralPolicy()
+    context = DecisionContext(
+        [Card("red", 1)],
+        [],
+        character=CHARACTERS["Warrior"],
+    )
+    encounter = Encounter(
+        "Treasure",
+        1,
+        3,
+        3,
+        3,
+        rewards={"strike": ChallengeReward(treasure=True)},
+    )
+    monkeypatch.setattr("dragonisles.bot._adventure_draw_value", lambda *_: 2.0)
+    monkeypatch.setattr(
+        "dragonisles.bot.challenge_probability", lambda *args: 0.5
+    )
+
+    assert policy._method_reward_score(context, encounter, "strike") == (
+        2.0 + expected_treasure_value()
+    )
 
 
 def test_monk_purges_regardless_of_hand_size():

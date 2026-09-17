@@ -35,14 +35,6 @@ def _ready_bot_session():
     return WebSession("bot")
 
 
-def test_solo_cli_requires_developer_gate(monkeypatch):
-    from dragonisles.web import main
-
-    monkeypatch.delenv("DRAGONISLES_DEV_SINGLEPLAYER", raising=False)
-    with pytest.raises(SystemExit, match="developer-only"):
-        main(["--mode", "solo"])
-
-
 def _web_request(server, method, path, body=None, cookie=None):
     connection = http.client.HTTPConnection(*server.server_address)
     headers = {}
@@ -130,31 +122,6 @@ def test_web_state_exposes_board_and_public_state():
         for player in state["players"]
     )
     assert set(state["trophies"]) >= {"dragon", "oni", "all"}
-
-
-def test_solo_mode_has_one_human_without_opponent_or_turn_prompt():
-    session = WebSession("solo")
-    state = session.state()
-
-    assert len(session.game.state.players) == 1
-    assert state["mode"] == "solo"
-    assert state["seat_name"] == "Human"
-    assert state["opponent_name"] is None
-    assert len(state["players"]) == 1
-    assert state["human_turn"] is True
-    assert "boat" not in state
-    assert "first_turn" not in state
-
-
-def test_solo_mode_new_game_stays_singleplayer():
-    session = WebSession("solo")
-    session.action({"action": "new_game"})
-
-    assert session.mode == "solo"
-    assert len(session.game.state.players) == 1
-    assert session.state()["opponent_name"] is None
-    with pytest.raises(ValueError, match="only one seat"):
-        session.state(1)
 
 
 def test_player_panels_render_character_abilities():
@@ -1105,10 +1072,7 @@ def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
     )
     assert "Waiting for ${esc(S.opponent_name)}…" in HTML
     assert "No other player has joined yet." in HTML
-    assert (
-        "S.mode==='versus'?` · vs ${esc(S.opponent_name||'no one yet')}`"
-        ":S.mode==='bot'?' · vs Bot':''"
-    ) in HTML
+    assert "S.mode==='versus'?`vs ${esc(S.opponent_name||'no one yet')}`:'vs Bot'" in HTML
 
 
 def test_web_keeps_bot_panel_visible_without_first_turn_choice():

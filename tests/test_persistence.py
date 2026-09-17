@@ -98,28 +98,6 @@ def test_save_load_round_trip_preserves_game_state(tmp_path):
     assert restored.state(0)["opponent_name"] == "Bob"
 
 
-def test_solo_save_load_preserves_single_player_state(tmp_path):
-    path = tmp_path / "solo.pkl"
-    source = WebSession("solo")
-    source.game.state.turn_number = 4
-    source.game.state.players[0].coins = 3
-
-    save(path, source.mode, source.game, {}, source.seat_names)
-    loaded = load(path)
-
-    assert loaded is not None
-    mode, game, auth, names, boat = loaded
-    assert mode == "solo"
-    assert auth == {}
-    assert names == {}
-    assert len(game.state.players) == 1
-    assert game.state.turn_number == 4
-    restored = WebSession("solo")
-    restored.restore(mode, game, names, boat)
-    assert restored.state()["opponent_name"] is None
-    assert restored.state()["players"][0]["coins"] == 3
-
-
 def test_restart_keeps_authenticated_seats(tmp_path):
     path = tmp_path / "game.pkl"
     configure("versus", "test123", state_path=path)

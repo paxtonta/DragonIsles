@@ -32,9 +32,7 @@ from dragonisles.web import (
 
 
 def _ready_bot_session():
-    session = WebSession("bot")
-    session.action({"action": "first_turn", "choice": "me"})
-    return session
+    return WebSession("bot")
 
 
 def _web_request(server, method, path, body=None, cookie=None):
@@ -207,7 +205,6 @@ def test_web_new_game_rebinds_interaction_callbacks_to_the_live_session():
 def test_web_new_game_skill_choice_uses_the_live_session_callback():
     session = _ready_bot_session()
     session.new_game()
-    session.action({"action": "first_turn", "choice": "me"})
     _force_human_turn(session)
     human = session.human
     human.character = CHARACTERS["Monk"]
@@ -1078,13 +1075,14 @@ def test_web_suppresses_undecided_status_but_keeps_resolved_waiting_panel():
     assert "S.mode==='versus'?`vs ${esc(S.opponent_name||'no one yet')}`:'vs Bot'" in HTML
 
 
-def test_web_keeps_bot_panel_visible_while_first_turn_is_pending():
+def test_web_keeps_bot_panel_visible_without_first_turn_choice():
     assert "let players=S.players.map(p=>" in HTML
     assert "${esc(p.character)}" in HTML
     assert "${esc(p.ability)}" in HTML
     assert "S.first_turn?'':`<b>Turn ${S.turn}</b>" in HTML
     assert "S.mode==='bot'&&!S.first_turn&&S.discard" in HTML
     assert "S.mode==='bot'&&!S.first_turn&&S.challenge" in HTML
+    assert "function firstTurnHtml(){return ''}" in HTML
 
 
 def test_web_refreshes_method_buttons_after_render():
@@ -1462,69 +1460,33 @@ def test_versus_time_rejects_bot_mode_and_unreadable_text():
     assert session.boat_times == {}
 
 
-def test_bot_mode_requires_a_first_turn_choice_before_play():
+def test_bot_mode_starts_with_human_first():
     session = WebSession("bot")
     initial_turn = session.game.state.turn_number
-    initial_player = session.game.state.current_player
     bot = session.game.state.players[1]
 
     assert "boat" not in session.state()
-    assert session.state()["first_turn"] == {"pending": True}
-    assert session.state()["first_turn_result"] is None
-    assert session.game.state.current_player == initial_player
+    assert session.state()["first_turn"] is None
+    assert session.state()["first_turn_result"] == "Human goes first."
+    assert session.game.state.current_player == 0
     assert bot.encounters == []
     session._run_bots()
     assert bot.attempts == 0
     assert bot.prepares == 0
     assert bot.encounters == []
-    for action in ("attempt", "prepare_start"):
-        with pytest.raises(ValueError, match="choose who goes first first"):
-            session.action({"action": action})
-    for action in ("continue_bot", "continue_bot_discard"):
-        with pytest.raises(ValueError, match="choose who goes first first"):
-            session.action({"action": action})
-    assert bot.attempts == 0
-    assert bot.prepares == 0
-    assert bot.encounters == []
-    with pytest.raises(ValueError, match="invalid first-turn choice"):
-        session.action({"action": "first_turn", "choice": "random"})
-
-    session.action({"action": "first_turn", "choice": "me"})
-    assert session.game.state.current_player == 0
-    assert session.state()["first_turn"] is None
-    assert session.state()["first_turn_result"] == "You chose to go first."
+    with pytest.raises(ValueError, match="Human goes first"):
+        session.action({"action": "first_turn", "choice": "bot"})
 
     session.action({"action": "new_game"})
-    assert session.state()["first_turn"] == {"pending": True}
+    assert session.state()["first_turn"] is None
+    assert session.game.state.current_player == 0
     assert session.game.state.turn_number == initial_turn
 
 
-def test_bot_first_turn_choice_can_give_the_bot_the_opening_turn():
-    session = WebSession("bot")
-    bot = session.game.state.players[1]
-
-    session.action({"action": "first_turn", "choice": "bot"})
-
-    assert (
-        session.game.state.current_player == 1
-        or session.game.state.turn_number > 1
-    )
-    assert session.state()["first_turn_result"] == (
-        "You gave the Bot the first turn."
-    )
-    assert (
-        session.pending_challenge is not None
-        or session.pending_bot_prepare is not None
-        or bot.prepares > 0
-        or bot.encounters
-    )
-
-
-def test_bot_first_turn_panel_has_only_two_choices_and_versus_keeps_boat_panel():
-    assert "<b>Who goes first?</b>" in HTML
-    assert "choice:'me'})" in HTML
-    assert "choice:'bot'})" in HTML
-    assert "choice:'random'})" not in HTML
+def test_bot_first_turn_panel_is_removed_and_versus_keeps_boat_panel():
+    assert "function firstTurnHtml(){return ''}" in HTML
+    assert "choice:'me'})" not in HTML
+    assert "choice:'bot'})" not in HTML
     versus = WebSession("versus")
     assert "first_turn" not in versus.state()
     assert versus.state()["boat"] is not None

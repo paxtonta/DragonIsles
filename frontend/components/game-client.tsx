@@ -146,7 +146,7 @@ export default function GameClient() {
   const busy = Boolean(state.challenge || state.prepare || state.trader || state.treasure || state.discard);
   const actionDisabled = state.game_over || Boolean(state.boat) || Boolean(state.first_turn) || (state.mode === "versus" && !state.human_turn);
   const player = state.players.find(item => item.seat === state.seat);
-  const displayName = (name: string) => state.mode === "bot" ? ({ Human: "Tim", Bot: "Bot" }[name] || name) : name;
+  const displayName = (name: string) => name;
   const opponentLabel = state.opponent_name ? displayName(state.opponent_name) : "no one yet";
   const waitingLabel = state.opponent_name ? `Waiting for ${opponentLabel}…` : "No other player has joined yet.";
   const titleStatus = state.first_turn ? "" : `Turn ${state.turn} — ${state.game_over ? "Game over" : state.human_turn ? "Your turn" : state.mode === "versus" ? waitingLabel : "Bot turn"}`;
@@ -155,7 +155,7 @@ export default function GameClient() {
   const challenge = state.challenge;
   const completed = (item: Player) => item.encounters.map(encounter => encounter.name).join(", ") || "none";
   const trophies = Object.entries(state.trophies);
-  const eventText = state.mode === "bot" ? state.events.join("\n").replaceAll("Human", "Tim") : state.events.join("\n");
+  const eventText = state.events.join("\n");
 
   return <main>
     <h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} /><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button><Rulebook mode={state.mode} /></h1>
@@ -166,7 +166,6 @@ export default function GameClient() {
         {(state.boat_result || state.first_turn_result) && <><br /><span className="muted">{state.boat_result || state.first_turn_result}</span></>}
         <br />Trophies: {trophies.map(([key, value]) => <span key={key} title={`${key === "all" ? "All types" : key} trophy: ${key === "all" ? 5 : 3} Victory Points`}>{key}: {Array.isArray(value) ? value.map(displayName).join(", ") : value ? displayName(value) : "none"} · </span>)}<br /><span className="muted">Die faces: {state.die_faces.join(", ")}</span>
       </CardContent></Card>
-      {state.mode === "bot" && state.first_turn && <Card><CardContent><b>Who goes first?</b><br /><Button onClick={() => void post({ action: "first_turn", choice: "me" })}>I go first</Button><Button onClick={() => void post({ action: "first_turn", choice: "bot" })}>Bot goes first</Button></CardContent></Card>}
       {state.boat && <Card><CardContent><b>{state.boat.stage === "time" ? "Roughly what time of day did you last travel by boat?" : "When did you last travel by boat?"}</b>
         {state.boat.waiting ? <p>Answer submitted: {state.boat.mine}. {waitingLabel}</p> : <><Input value={boatText || state.boat.mine || ""} onChange={event => setBoatText(event.target.value)} /><Button onClick={() => void post({ action: state.boat?.stage === "time" ? "boat_time" : "boat_answer", text: boatText || state.boat?.mine || "" })}>Submit</Button></>}</CardContent></Card>}
       {state.mode === "versus" && !state.boat && !state.human_turn && <Card><CardContent>{waitingLabel}</CardContent></Card>}

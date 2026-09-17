@@ -106,8 +106,12 @@ class WebSession:
         self.boat_times = {}
         self.boat_time_open = False
         self.boat_time_followups = {}
-        self._first_turn_result = None
-        self.first_turn_decided = False
+        self._first_turn_result = (
+            "Human goes first." if self.mode == "bot" else None
+        )
+        self.first_turn_decided = self.mode == "bot"
+        if self.mode == "bot":
+            self.game.state.current_player = 0
         self.pending: dict[str, Any] = {}
         self.pending_challenge: ChallengeProgress | None = None
         self.pending_skill_tracks: tuple[str, ...] | None = None
@@ -172,8 +176,10 @@ class WebSession:
                 first_turn = boat.get(
                     "first_turn", {"result": None, "decided": True}
                 )
-                self._first_turn_result = first_turn["result"]
-                self.first_turn_decided = first_turn["decided"]
+                self._first_turn_result = "Human goes first."
+                self.first_turn_decided = True
+                if not first_turn["decided"]:
+                    self.game.state.current_player = 0
                 self.boat_time_open = False
             self.boat_time_followups = {}
             self._apply_seat_names()
@@ -389,23 +395,7 @@ class WebSession:
                     )
                     raise ValueError(message)
             if action == "first_turn":
-                if self.mode != "bot":
-                    raise ValueError("first-turn choice is unavailable in versus mode")
-                choice = payload.get("choice")
-                if choice not in {"me", "bot"}:
-                    raise ValueError("invalid first-turn choice")
-                winner = 0 if choice == "me" else 1
-                self.game.state.current_player = winner
-                self._first_turn_result = (
-                    "You chose to go first."
-                    if choice == "me"
-                    else "You gave the Bot the first turn."
-                )
-                self.first_turn_decided = True
-                self.events.append(self._first_turn_result)
-                self.revision += 1
-                self._run_bots()
-                return
+                raise ValueError("first-turn choice is unavailable; Human goes first")
             if action == "boat_answer":
                 if self.mode != "versus":
                     raise ValueError("boat question is unavailable in bot mode")
@@ -1163,8 +1153,7 @@ function boatHtml(){if(S.mode!=='versus'||!S.boat)return '';
  if(S.boat.waiting)return `<div class=panel><b>${prompt}</b><br>Your answer: ${esc(S.boat.mine)}<br><span class=muted>${S.opponent_name?`Waiting for ${esc(S.opponent_name)}'s answer…`:'No other player has joined yet.'}</span></div>`;
  return `<div class=panel><b>${prompt}</b>${S.boat.message?`<br><span class=muted>${esc(S.boat.message)}</span>`:''}<br><input id=boat-answer type=text maxlength=60 value="${esc(boatDraft!==null?boatDraft:(S.boat.mine||''))}" oninput="boatDraft=this.value"><button onclick="submitBoat()">Submit</button></div>`}
 function submitBoat(){let input=document.getElementById('boat-answer');post('/api/action',{action:S.boat.stage==='time'?'boat_time':'boat_answer',text:input.value})}
-function firstTurnHtml(){if(S.mode!=='bot'||!S.first_turn)return '';
- return `<div class=panel><b>Who goes first?</b><br><button onclick="post('/api/action',{action:'first_turn',choice:'me'})">I go first</button><button onclick="post('/api/action',{action:'first_turn',choice:'bot'})">Bot goes first</button></div>`}
+function firstTurnHtml(){return ''}
 
 function challengeHtml(){let c=S.challenge;if(S.game_over||!c)return '';
  let dice=c.rolls.map((r,i)=>`<span class="die ${rerollPicks.includes(i)?'picked':''}" onclick="toggleDie(${i})">${r}</span>`).join('');

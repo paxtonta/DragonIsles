@@ -363,29 +363,66 @@ class LiteralPolicy:
     def _target_encounter(self, context: DecisionContext) -> Encounter | None:
         if not context.encounters:
             return None
-        ordered = tuple(
-            sorted(
-                context.encounters,
-                key=lambda encounter: self._encounter_order_key(context, encounter),
-            )
-        )
-        if len(context.completed_encounters) == 7:
-            for encounter in ordered:
-                if self._encounter_is_winnable(
-                    context, encounter
-                ) and self._would_close_out_a_win(context, encounter):
-                    return encounter
-        slot = min(len(context.completed_encounters) // 2, 3)
-        scheduled = ordered[min(slot, len(ordered) - 1)]
-        if self._encounter_is_winnable(context, scheduled):
-            return scheduled
-        scheduled_index = ordered.index(scheduled)
-        winnable = [
-            encounter
-            for encounter in ordered[: scheduled_index + 1]
-            if self._encounter_is_winnable(context, encounter)
+        candidates = [
+            (self._encounter_choice_key(context, encounter), encounter)
+            for encounter in context.encounters
         ]
-        return winnable[-1] if winnable else scheduled
+        winnable = [
+            (key, encounter) for key, encounter in candidates if key is not None
+        ]
+        if len(context.completed_encounters) == 7:
+            winning = [
+                (key, encounter)
+                for key, encounter in winnable
+                if self._would_close_out_a_win(context, encounter)
+            ]
+            if winning:
+                winnable = winning
+        if winnable:
+            return max(winnable, key=lambda item: item[0])[1]
+        return max(
+            context.encounters,
+            key=lambda encounter: self._encounter_order_key(context, encounter),
+        )
+
+    def _encounter_choice_key(
+        self, context: DecisionContext, encounter: Encounter
+    ) -> tuple[float, float, float, int, str] | None:
+        options = []
+        for method in ("sneak", "steal", "strike"):
+            if method == encounter.blocked_method:
+                continue
+            result = best_combo(
+                context.hand,
+                method=method,
+                target=encounter.target_for(method),
+                bonus=_method_bonus(context, encounter, method),
+                faces=context.die_faces,
+                rerolls=_rerolls(context),
+                reroll_ones=_reroll_ones(context),
+            )
+            if result is None:
+                continue
+            qualifying = self._smallest_qualifying_combo(
+                context, encounter, method, result
+            )
+            if not self._should_challenge(
+                context, encounter, method, qualifying
+            ):
+                continue
+            combo, probability = qualifying
+            options.append(
+                (
+                    self._challenge_option_value(
+                        context, encounter, method, qualifying
+                    ),
+                    encounter.victory_points,
+                    probability,
+                    -combo.card_count,
+                    method,
+                )
+            )
+        return max(options) if options else None
 
     def _would_close_out_a_win(
         self, context: DecisionContext, encounter: Encounter

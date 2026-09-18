@@ -54,7 +54,7 @@ function storedTheme(): "dark" | "light" | null {
   }
 }
 
-function LoadingOrLogin({ theme, onToggle, onJoined }: { theme: "dark" | "light"; onToggle: () => void; onJoined: () => void }) {
+function LoadingOrLogin({ theme, onToggle, onJoined, message }: { theme: "dark" | "light"; onToggle: () => void; onJoined: () => void; message: string }) {
   const [name, setName] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [error, setError] = useState("");
@@ -69,6 +69,7 @@ function LoadingOrLogin({ theme, onToggle, onJoined }: { theme: "dark" | "light"
   };
   return <main><Card><CardHeader><CardTitle>DragonIsles <ThemeToggle theme={theme} onToggle={onToggle} /></CardTitle></CardHeader><CardContent>
     <p>This private game is for whoever has the link and passphrase.</p>
+    {message && <p role="alert">{message}</p>}
     <form onSubmit={submit}><Label>Your name<Input value={name} maxLength={20} onChange={event => setName(event.target.value)} /></Label>
       <Label>Passphrase<Input type="password" value={passphrase} onChange={event => setPassphrase(event.target.value)} /></Label>
       <Button type="submit">Join game</Button><p role="alert">{error}</p>
@@ -87,6 +88,17 @@ export default function GameClient() {
   const [method, setMethod] = useState<string | null>(null);
   const [options, setOptions] = useState<Options | null>(null);
   const [error, setError] = useState("");
+  const expireSession = useCallback(() => {
+    setState(null);
+    setNeedsLogin(true);
+    setSelectedEncounter(null);
+    setSelectedCards([]);
+    setDiscardCards([]);
+    setRerollDice([]);
+    setMethod(null);
+    setOptions(null);
+    setError("Your session expired. Rejoin the game to continue.");
+  }, []);
 
   useEffect(() => {
     const saved = storedTheme();
@@ -106,25 +118,28 @@ export default function GameClient() {
       const next = await api("/api/state") as State;
       setState(next); setNeedsLogin(false); setError("");
     } catch (caught) {
-      if (caught instanceof Error && caught.message.includes("authentication")) setNeedsLogin(true);
+      if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
       else setError(caught instanceof Error ? caught.message : "Unable to load game.");
     }
-  }, []);
+  }, [expireSession]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    if (!state) return;
+    if (!state || needsLogin) return;
     const delay = state.mode === "versus" && !state.human_turn ? 2000 : 3000;
     const timer = window.setInterval(() => { if (!state.challenge && !state.prepare && !state.discard && !state.trader && !state.treasure) void load(); }, delay);
     return () => window.clearInterval(timer);
-  }, [load, state]);
+  }, [load, needsLogin, state]);
 
   const post = useCallback(async (body: Record<string, unknown>) => {
     try {
       const next = await api("/api/action", body) as State;
       setState(next); setSelectedEncounter(null); setSelectedCards([]); setDiscardCards([]); setRerollDice([]); setMethod(null); setOptions(null); setError("");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Action failed."); await load(); }
-  }, [load]);
+    } catch (caught) {
+      if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
+      else { setError(caught instanceof Error ? caught.message : "Action failed."); await load(); }
+    }
+  }, [expireSession, load]);
 
   const resetGame = async () => {
     if (!window.confirm("Reset this friend game for both players?")) return;
@@ -134,7 +149,8 @@ export default function GameClient() {
       setNeedsLogin(true);
       setError("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to reset game.");
+      if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
+      else setError(caught instanceof Error ? caught.message : "Unable to reset game.");
     }
   };
 
@@ -147,12 +163,15 @@ export default function GameClient() {
   useEffect(() => {
     if (!state || !selectedEncounter || !selectedCards.length || !state.human_turn) { setOptions(null); return; }
     let cancelled = false;
-    void api("/api/options", { encounter: selectedEncounter, cards: selectedCards }).then(data => { if (!cancelled) setOptions(data as Options); }).catch(() => { if (!cancelled) setOptions(null); });
+    void api("/api/options", { encounter: selectedEncounter, cards: selectedCards }).then(data => { if (!cancelled) setOptions(data as Options); }).catch(caught => {
+      if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
+      if (!cancelled) setOptions(null);
+    });
     return () => { cancelled = true; };
-  }, [selectedCards, selectedEncounter, state]);
+  }, [expireSession, selectedCards, selectedEncounter, state]);
 
   const toggleTheme = () => setTheme(current => current === "dark" ? "light" : "dark");
-  if (needsLogin) return <LoadingOrLogin theme={theme} onToggle={toggleTheme} onJoined={() => void load()} />;
+  if (needsLogin) return <LoadingOrLogin theme={theme} onToggle={toggleTheme} onJoined={() => void load()} message={error} />;
   if (!state) return <main><h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} /></h1><p>{error || "Loading…"}</p></main>;
 
   const busy = Boolean(state.challenge || state.prepare || state.trader || state.treasure || state.discard);

@@ -18,11 +18,11 @@ another API origin when needed.
 
 ## Vercel
 
-Deploy the repository root as the Vercel project root. The root package
-delegates the Next.js build to `frontend/`, while `api/index.py` exposes the
-FastAPI application under the same Vercel domain. No `DRAGONISLES_API_URL`
-value is needed for this same-project deployment.
+Configure the frontend Vercel project root directory as `frontend` and set
+`DRAGONISLES_API_URL` to the public URL of a separate Vercel project using the
+FastAPI framework preset. Both projects can use this repository; the backend
+project should use the repository root and the `app:app` entrypoint.
 
 The local Next.js development server still proxies `/api/*` to
 `http://127.0.0.1:8125` by default. Set `DRAGONISLES_API_URL` only when using
-the frontend with a separately hosted API outside Vercel.
+the frontend with a separately hosted API.

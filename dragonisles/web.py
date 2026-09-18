@@ -1271,6 +1271,14 @@ def configure(
         SECURE_COOKIE = secure_cookie
 
 
+def reset_game() -> None:
+    with SESSION.lock:
+        AUTH_SESSIONS.clear()
+        AUTH_LAST_SEEN.clear()
+        SESSION.seat_names = {}
+        SESSION.new_game()
+
+
 class Handler(BaseHTTPRequestHandler):
     def _cookie_token(self) -> str | None:
         cookies = SimpleCookie(self.headers.get("Cookie", ""))
@@ -1327,6 +1335,17 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path == "/api/join":
                 self._join(payload)
+                return
+            if path == "/api/reset":
+                if self._require_seat() is None:
+                    return
+                reset_game()
+                self.send_json(
+                    {"reset": True},
+                    cookie="dragonisles_session=; Max-Age=0; HttpOnly; "
+                    "SameSite=Lax; Path=/"
+                    + ("; Secure" if SECURE_COOKIE else ""),
+                )
                 return
             seat = self._require_seat()
             if seat is None:

@@ -126,6 +126,18 @@ export default function GameClient() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Action failed."); await load(); }
   }, [load]);
 
+  const resetGame = async () => {
+    if (!window.confirm("Reset this friend game for both players?")) return;
+    try {
+      await api("/api/reset", {});
+      setState(null);
+      setNeedsLogin(true);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to reset game.");
+    }
+  };
+
   useEffect(() => {
     if (!state?.discard?.player_is_bot) return;
     const timer = window.setTimeout(() => { void post({ action: "continue_bot_discard", revision: state.revision }); }, 1000);
@@ -158,7 +170,7 @@ export default function GameClient() {
   const eventText = state.events.join("\n");
 
   return <main>
-    <h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} /><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button><Rulebook mode={state.mode} /></h1>
+    <h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} />{state.mode === "versus" ? <Button variant="secondary" onClick={() => void resetGame()}>Reset game</Button> : <Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button>}<Rulebook mode={state.mode} /></h1>
     {error && <p role="alert">{error}</p>}
     <div className="grid"><section>
       <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {displayName(state.seat_name)}{state.mode === "versus" ? ` · vs ${opponentLabel}` : state.mode === "bot" ? ` · vs ${displayName("Bot")}` : ""}</span>

@@ -37,6 +37,10 @@ def _cookie_header(token: str) -> str:
     return f"dragonisles_session={token}; HttpOnly; SameSite=Lax; Path=/; Secure"
 
 
+def _expired_cookie_header() -> str:
+    return "dragonisles_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/; Secure"
+
+
 def _join(payload: dict[str, Any], request: Request) -> JSONResponse:
     if web.PASSPHRASE is None:
         return JSONResponse({"seat": 0})
@@ -124,6 +128,16 @@ async def join(request: Request) -> JSONResponse:
         return _join(payload, request)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         return _error(str(exc), HTTPStatus.BAD_REQUEST)
+
+
+@app.post("/api/reset")
+async def reset(request: Request) -> JSONResponse:
+    if _seat(request) is None:
+        return _error("authentication required")
+    web.reset_game()
+    response = JSONResponse({"reset": True})
+    response.headers["Set-Cookie"] = _expired_cookie_header()
+    return response
 
 
 @app.post("/api/options")

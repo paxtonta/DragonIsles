@@ -19,7 +19,7 @@ another API origin when needed.
 ## Vercel
 
 The repository-level `vercel.json` defines one Vercel project with two
-services: Next.js from `frontend/` and FastAPI from the repository root.
+services: Next.js from `frontend/` and FastAPI from `backend/`.
 Requests under `/api/*` route to FastAPI; all other requests route to Next.js.
 No `DRAGONISLES_API_URL` value is needed for this setup.
 

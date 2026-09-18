@@ -1,0 +1,886 @@
+{
+  "_metadata": {
+    "status": "unofficial reconstruction",
+    "warning": "Not the published DragonIsles encounter card list or values.",
+    "generated_by": "hand-authored",
+    "description": "The 50-card reconstruction supplied for the DragonIsles practice implementation."
+  },
+  "encounters": [
+    {
+      "id": "mountain_of_darkness_1",
+      "name": "Mountain of Darkness",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 0,
+      "steal_target": 5,
+      "strike_target": 8,
+      "blocked_method": "sneak",
+      "rewards": {}
+    },
+    {
+      "id": "mountain_of_darkness_2",
+      "name": "Thorned Pass",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 0,
+      "steal_target": 5,
+      "strike_target": 8,
+      "blocked_method": "sneak",
+      "rewards": {}
+    },
+    {
+      "id": "thorned_pass_1",
+      "name": "Eternal Blossom Forest",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 9,
+      "steal_target": 3,
+      "strike_target": 5,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "thorned_pass_2",
+      "name": "Spirit's Rest Woods",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 9,
+      "steal_target": 3,
+      "strike_target": 5,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "eternal_blossom_forest_1",
+      "name": "Dragon Crystal Caverns",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 12,
+      "steal_target": 6,
+      "strike_target": 6,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "eternal_blossom_forest_2",
+      "name": "Night Flower Depths",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 12,
+      "steal_target": 6,
+      "strike_target": 6,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "forest_of_whispering_waves",
+      "name": "Forest of Whispering Waves",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 3,
+      "sneak_target": 11,
+      "steal_target": 9,
+      "strike_target": 9,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "serpents_spine",
+      "name": "Serpent's Spine",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 3,
+      "sneak_target": 0,
+      "steal_target": 10,
+      "strike_target": 14,
+      "blocked_method": "sneak",
+      "rewards": {}
+    },
+    {
+      "id": "tengu_peak",
+      "name": "Tengu Peak",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 3,
+      "sneak_target": 0,
+      "steal_target": 10,
+      "strike_target": 14,
+      "blocked_method": "sneak",
+      "rewards": {
+        "strike": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "crashing_waves_cave",
+      "name": "Crashing Waves Cave",
+      "encounter_type": "location",
+      "family": null,
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 4,
+      "sneak_target": 18,
+      "steal_target": 12,
+      "strike_target": 14,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "oni_1",
+      "name": "ONI",
+      "encounter_type": "oni",
+      "family": "Oni",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 9,
+      "steal_target": 9,
+      "strike_target": 7,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "oni_2",
+      "name": "ONI",
+      "encounter_type": "oni",
+      "family": "Oni",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 9,
+      "steal_target": 9,
+      "strike_target": 7,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "oni_3",
+      "name": "ONI",
+      "encounter_type": "oni",
+      "family": "Oni",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 7,
+      "steal_target": 0,
+      "strike_target": 7,
+      "blocked_method": "steal",
+      "rewards": {}
+    },
+    {
+      "id": "hannya_1",
+      "name": "HANNYA",
+      "encounter_type": "oni",
+      "family": "Hannya",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 7,
+      "steal_target": 0,
+      "strike_target": 7,
+      "blocked_method": "steal",
+      "rewards": {}
+    },
+    {
+      "id": "kasha_1",
+      "name": "KASHA",
+      "encounter_type": "oni",
+      "family": "Kasha",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 5,
+      "steal_target": 7,
+      "strike_target": 4,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "kasha_2",
+      "name": "KASHA",
+      "encounter_type": "oni",
+      "family": "Kasha",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 5,
+      "steal_target": 7,
+      "strike_target": 4,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "kasha_3",
+      "name": "KASHA",
+      "encounter_type": "oni",
+      "family": "Kasha",
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 2,
+      "sneak_target": 10,
+      "steal_target": 7,
+      "strike_target": 12,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "kasha_4",
+      "name": "KASHA",
+      "encounter_type": "oni",
+      "family": "Kasha",
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 2,
+      "sneak_target": 10,
+      "steal_target": 7,
+      "strike_target": 12,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "hannya_2",
+      "name": "HANNYA",
+      "encounter_type": "oni",
+      "family": "Hannya",
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 3,
+      "sneak_target": 12,
+      "steal_target": 0,
+      "strike_target": 12,
+      "blocked_method": "steal",
+      "rewards": {}
+    },
+    {
+      "id": "oni_4",
+      "name": "ONI",
+      "encounter_type": "oni",
+      "family": "Oni",
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 5,
+      "sneak_target": 15,
+      "steal_target": 13,
+      "strike_target": 13,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "kitsune_1",
+      "name": "KITSUNE",
+      "encounter_type": "bakemono",
+      "family": "Kitsune",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 8,
+      "steal_target": 6,
+      "strike_target": 11,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "kitsune_2",
+      "name": "KITSUNE",
+      "encounter_type": "bakemono",
+      "family": "Kitsune",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 8,
+      "steal_target": 6,
+      "strike_target": 11,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "tanuki_1",
+      "name": "TANUKI",
+      "encounter_type": "bakemono",
+      "family": "Tanuki",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 5,
+      "steal_target": 3,
+      "strike_target": 7,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "tanuki_2",
+      "name": "TANUKI",
+      "encounter_type": "bakemono",
+      "family": "Tanuki",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 5,
+      "steal_target": 3,
+      "strike_target": 7,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "kamaitachi_1",
+      "name": "KAMAITACHI",
+      "encounter_type": "bakemono",
+      "family": "Kamaitachi",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 6,
+      "steal_target": 4,
+      "strike_target": 0,
+      "blocked_method": "strike",
+      "rewards": {}
+    },
+    {
+      "id": "kamaitachi_2",
+      "name": "KAMAITACHI",
+      "encounter_type": "bakemono",
+      "family": "Kamaitachi",
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 6,
+      "steal_target": 4,
+      "strike_target": 0,
+      "blocked_method": "strike",
+      "rewards": {}
+    },
+    {
+      "id": "tanuki_3",
+      "name": "TANUKI",
+      "encounter_type": "bakemono",
+      "family": "Tanuki",
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 3,
+      "sneak_target": 13,
+      "steal_target": 8,
+      "strike_target": 9,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "tanuki_4",
+      "name": "TANUKI",
+      "encounter_type": "bakemono",
+      "family": "Tanuki",
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 3,
+      "sneak_target": 13,
+      "steal_target": 8,
+      "strike_target": 9,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "kamaitachi_3",
+      "name": "KAMAITACHI",
+      "encounter_type": "bakemono",
+      "family": "Kamaitachi",
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 3,
+      "sneak_target": 12,
+      "steal_target": 10,
+      "strike_target": 0,
+      "blocked_method": "strike",
+      "rewards": {}
+    },
+    {
+      "id": "kitsune_3",
+      "name": "KITSUNE",
+      "encounter_type": "bakemono",
+      "family": "Kitsune",
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 4,
+      "sneak_target": 14,
+      "steal_target": 12,
+      "strike_target": 15,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "jatai_1",
+      "name": "JATAI",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 4,
+      "steal_target": 6,
+      "strike_target": 5,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "jatai_2",
+      "name": "SETO TAISHO",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 4,
+      "steal_target": 6,
+      "strike_target": 5,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "kasa_obake",
+      "name": "KASA OBAKI",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 8,
+      "steal_target": 4,
+      "strike_target": 4,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "morinji_no_kama",
+      "name": "MORINJI NO KAMA",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 8,
+      "steal_target": 4,
+      "strike_target": 4,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "shogoro",
+      "name": "SHOGORO",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 1,
+      "sneak_target": 8,
+      "steal_target": 4,
+      "strike_target": 4,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "hyotan_kozu",
+      "name": "HYOTAN KOZU",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 7,
+      "steal_target": 6,
+      "strike_target": 10,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "hahakigami",
+      "name": "HAHAKIGAMI",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": false,
+      "icons": 1,
+      "victory_points": 2,
+      "sneak_target": 7,
+      "steal_target": 6,
+      "strike_target": 10,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "bakezori",
+      "name": "BAKEZORI",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 2,
+      "sneak_target": 14,
+      "steal_target": 9,
+      "strike_target": 11,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "biwa_bokuboku",
+      "name": "BIWA BOKUBOKU",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 3,
+      "sneak_target": 14,
+      "steal_target": 7,
+      "strike_target": 10,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "chochin_obake",
+      "name": "CHOCHIN-OBAKE",
+      "encounter_type": "tsukumogami",
+      "family": null,
+      "is_sea": true,
+      "icons": 2,
+      "victory_points": 2,
+      "sneak_target": 10,
+      "steal_target": 10,
+      "strike_target": 10,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "coins": 1
+        }
+      }
+    },
+    {
+      "id": "luck_dragon_1",
+      "name": "LUCK DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 3,
+      "sneak_target": 11,
+      "steal_target": 11,
+      "strike_target": 10,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "luck_dragon_2",
+      "name": "LUCK DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 3,
+      "sneak_target": 11,
+      "steal_target": 11,
+      "strike_target": 10,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "luck_dragon_3",
+      "name": "LUCK DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 3,
+      "sneak_target": 11,
+      "steal_target": 11,
+      "strike_target": 10,
+      "blocked_method": null,
+      "rewards": {
+        "steal": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "sea_dragon_1",
+      "name": "SEA DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 4,
+      "sneak_target": 16,
+      "steal_target": 10,
+      "strike_target": 12,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "sea_dragon_2",
+      "name": "SEA DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 4,
+      "sneak_target": 16,
+      "steal_target": 10,
+      "strike_target": 12,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "sea_dragon_3",
+      "name": "SEA DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 4,
+      "sneak_target": 16,
+      "steal_target": 10,
+      "strike_target": 12,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "rain_dragon_1",
+      "name": "RAIN DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 5,
+      "sneak_target": 15,
+      "steal_target": 11,
+      "strike_target": 16,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "rain_dragon_2",
+      "name": "RAIN DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 5,
+      "sneak_target": 15,
+      "steal_target": 11,
+      "strike_target": 16,
+      "blocked_method": null,
+      "rewards": {
+        "strike": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "eight_headed_dragon",
+      "name": "EIGHT-HEADED DRAGON",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 7,
+      "sneak_target": 18,
+      "steal_target": 13,
+      "strike_target": 16,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "treasure": true
+        },
+        "steal": {
+          "treasure": true
+        },
+        "strike": {
+          "treasure": true
+        }
+      }
+    },
+    {
+      "id": "dragon_king",
+      "name": "DRAGON KING",
+      "encounter_type": "dragon",
+      "family": null,
+      "is_sea": true,
+      "icons": 1,
+      "victory_points": 7,
+      "sneak_target": 20,
+      "steal_target": 14,
+      "strike_target": 18,
+      "blocked_method": null,
+      "rewards": {
+        "sneak": {
+          "treasure": true
+        },
+        "steal": {
+          "treasure": true
+        },
+        "strike": {
+          "treasure": true
+        }
+      }
+    }
+  ]
+}

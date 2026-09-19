@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import secrets
+import urllib.error
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -26,6 +27,7 @@ def _cookie_token(request: Request) -> str | None:
 def _seat(request: Request) -> int | None:
     if web.PASSPHRASE is None:
         return 0
+    web.SESSION.refresh_remote()
     token = _cookie_token(request)
     if token is None:
         return None
@@ -35,6 +37,10 @@ def _seat(request: Request) -> int | None:
 
 def _cookie_header(token: str) -> str:
     return f"dragonisles_session={token}; HttpOnly; SameSite=Lax; Path=/; Secure"
+
+
+def _expired_cookie_header() -> str:
+    return "dragonisles_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/; Secure"
 
 
 def _join(payload: dict[str, Any], request: Request) -> JSONResponse:
@@ -49,6 +55,7 @@ def _join(payload: dict[str, Any], request: Request) -> JSONResponse:
         )
     token = _cookie_token(request)
     name = web._clean_name(payload.get("name"))
+    web.SESSION.refresh_remote()
     with web.SESSION.lock:
         seat = web.AUTH_SESSIONS.get(token) if token is not None else None
         if seat is None:
@@ -126,6 +133,16 @@ async def join(request: Request) -> JSONResponse:
         return _error(str(exc), HTTPStatus.BAD_REQUEST)
 
 
+@app.post("/api/reset")
+async def reset(request: Request) -> JSONResponse:
+    if _seat(request) is None:
+        return _error("authentication required")
+    web.reset_game()
+    response = JSONResponse({"reset": True})
+    response.headers["Set-Cookie"] = _expired_cookie_header()
+    return response
+
+
 @app.post("/api/options")
 async def options(request: Request) -> JSONResponse:
     return await _action_request(request, "options")
@@ -147,10 +164,24 @@ async def _action_request(request: Request, action_name: str) -> JSONResponse:
         if action_name == "options":
             body = web.SESSION.options(payload, seat)
         else:
+            key = payload.get("idempotency_key")
+            expected_revision = payload.get("revision")
+            if not isinstance(key, str) or not key:
+                return _error("idempotency_key is required", HTTPStatus.BAD_REQUEST)
+            if type(expected_revision) is not int:
+                return _error("revision is required", HTTPStatus.BAD_REQUEST)
             with web.SESSION.lock:
-                web.SESSION.action(payload, seat)
-            web.SESSION.revision += 1
-            body = web.SESSION.state(seat)
+                if key in web.SESSION.processed_actions:
+                    return JSONResponse(web.SESSION.state(seat))
+                if expected_revision != web.SESSION.revision:
+                    return _error(
+                        f"stale state revision; current revision is {web.SESSION.revision}",
+                        HTTPStatus.CONFLICT,
+                    )
+                web.SESSION.action(payload, seat, save=False)
+                web.SESSION.processed_actions[key] = web.SESSION.revision
+                web.SESSION._save()
+                body = web.SESSION.state(seat)
         return JSONResponse(body)
     except (
         KeyError,
@@ -161,3 +192,8 @@ async def _action_request(request: Request, action_name: str) -> JSONResponse:
         json.JSONDecodeError,
     ) as exc:
         return _error(str(exc), HTTPStatus.BAD_REQUEST)
+    except urllib.error.HTTPError as exc:
+        if exc.code == HTTPStatus.PRECONDITION_FAILED:
+            web.SESSION.refresh_remote()
+            return _error("state changed; retry this move", HTTPStatus.CONFLICT)
+        return _error("state storage unavailable", HTTPStatus.SERVICE_UNAVAILABLE)

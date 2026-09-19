@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -54,7 +54,7 @@ function storedTheme(): "dark" | "light" | null {
   }
 }
 
-function LoadingOrLogin({ theme, onToggle, onJoined }: { theme: "dark" | "light"; onToggle: () => void; onJoined: () => void }) {
+function LoadingOrLogin({ theme, onToggle, onJoined, message }: { theme: "dark" | "light"; onToggle: () => void; onJoined: () => void; message: string }) {
   const [name, setName] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [error, setError] = useState("");
@@ -69,6 +69,7 @@ function LoadingOrLogin({ theme, onToggle, onJoined }: { theme: "dark" | "light"
   };
   return <main><Card><CardHeader><CardTitle>DragonIsles <ThemeToggle theme={theme} onToggle={onToggle} /></CardTitle></CardHeader><CardContent>
     <p>This private game is for whoever has the link and passphrase.</p>
+    {message && <p role="alert">{message}</p>}
     <form onSubmit={submit}><Label>Your name<Input value={name} maxLength={20} onChange={event => setName(event.target.value)} /></Label>
       <Label>Passphrase<Input type="password" value={passphrase} onChange={event => setPassphrase(event.target.value)} /></Label>
       <Button type="submit">Join game</Button><p role="alert">{error}</p>
@@ -87,6 +88,19 @@ export default function GameClient() {
   const [method, setMethod] = useState<string | null>(null);
   const [options, setOptions] = useState<Options | null>(null);
   const [error, setError] = useState("");
+  const [reconnecting, setReconnecting] = useState(false);
+  const intentKeys = useRef(new Map<string, string>());
+  const expireSession = useCallback(() => {
+    setState(null);
+    setNeedsLogin(true);
+    setSelectedEncounter(null);
+    setSelectedCards([]);
+    setDiscardCards([]);
+    setRerollDice([]);
+    setMethod(null);
+    setOptions(null);
+    setError("Your session expired. Rejoin the game to continue.");
+  }, []);
 
   useEffect(() => {
     const saved = storedTheme();
@@ -104,27 +118,59 @@ export default function GameClient() {
   const load = useCallback(async () => {
     try {
       const next = await api("/api/state") as State;
-      setState(next); setNeedsLogin(false); setError("");
+      setState(next); setNeedsLogin(false); setReconnecting(false); setError("");
     } catch (caught) {
-      if (caught instanceof Error && caught.message.includes("authentication")) setNeedsLogin(true);
+      setReconnecting(true);
+      if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
       else setError(caught instanceof Error ? caught.message : "Unable to load game.");
     }
-  }, []);
+  }, [expireSession]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    if (!state) return;
-    const delay = state.mode === "versus" && !state.human_turn ? 2000 : 3000;
-    const timer = window.setInterval(() => { if (!state.challenge && !state.prepare && !state.discard && !state.trader && !state.treasure) void load(); }, delay);
-    return () => window.clearInterval(timer);
-  }, [load, state]);
+    if (!state || needsLogin) return;
+    const timer = window.setInterval(() => { void load(); }, 3000);
+    const onFocus = () => { void load(); };
+    const onOnline = () => { void load(); };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [load, needsLogin, state]);
 
   const post = useCallback(async (body: Record<string, unknown>) => {
+    const revision = state?.revision;
+    const intent = JSON.stringify({ body, revision });
+    const idempotencyKey = intentKeys.current.get(intent) ?? crypto.randomUUID();
+    intentKeys.current.set(intent, idempotencyKey);
     try {
-      const next = await api("/api/action", body) as State;
-      setState(next); setSelectedEncounter(null); setSelectedCards([]); setDiscardCards([]); setRerollDice([]); setMethod(null); setOptions(null); setError("");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Action failed."); await load(); }
-  }, [load]);
+      const next = await api("/api/action", {
+        ...body,
+        revision,
+        idempotency_key: idempotencyKey,
+      }) as State;
+      setState(next); setSelectedEncounter(null); setSelectedCards([]); setDiscardCards([]); setRerollDice([]); setMethod(null); setOptions(null); setReconnecting(false); setError("");
+    } catch (caught) {
+      if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
+      else { setError(caught instanceof Error ? caught.message : "Action failed."); setReconnecting(true); await load(); }
+    }
+  }, [expireSession, load, state?.revision]);
+
+  const resetGame = async () => {
+    if (!window.confirm("Reset this friend game for both players?")) return;
+    try {
+      await api("/api/reset", {});
+      setState(null);
+      setNeedsLogin(true);
+      setError("");
+    } catch (caught) {
+      if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
+      else setError(caught instanceof Error ? caught.message : "Unable to reset game.");
+    }
+  };
 
   useEffect(() => {
     if (!state?.discard?.player_is_bot) return;
@@ -135,12 +181,15 @@ export default function GameClient() {
   useEffect(() => {
     if (!state || !selectedEncounter || !selectedCards.length || !state.human_turn) { setOptions(null); return; }
     let cancelled = false;
-    void api("/api/options", { encounter: selectedEncounter, cards: selectedCards }).then(data => { if (!cancelled) setOptions(data as Options); }).catch(() => { if (!cancelled) setOptions(null); });
+    void api("/api/options", { encounter: selectedEncounter, cards: selectedCards }).then(data => { if (!cancelled) setOptions(data as Options); }).catch(caught => {
+      if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
+      if (!cancelled) setOptions(null);
+    });
     return () => { cancelled = true; };
-  }, [selectedCards, selectedEncounter, state]);
+  }, [expireSession, selectedCards, selectedEncounter, state]);
 
   const toggleTheme = () => setTheme(current => current === "dark" ? "light" : "dark");
-  if (needsLogin) return <LoadingOrLogin theme={theme} onToggle={toggleTheme} onJoined={() => void load()} />;
+  if (needsLogin) return <LoadingOrLogin theme={theme} onToggle={toggleTheme} onJoined={() => void load()} message={error} />;
   if (!state) return <main><h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} /></h1><p>{error || "Loading…"}</p></main>;
 
   const busy = Boolean(state.challenge || state.prepare || state.trader || state.treasure || state.discard);
@@ -158,7 +207,8 @@ export default function GameClient() {
   const eventText = state.events.join("\n");
 
   return <main>
-    <h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} /><Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button><Rulebook mode={state.mode} /></h1>
+    <h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} />{state.mode === "versus" ? <Button variant="secondary" onClick={() => void resetGame()}>Reset game</Button> : <Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button>}<Rulebook mode={state.mode} /></h1>
+    {reconnecting && <p role="status">Reconnecting…</p>}
     {error && <p role="alert">{error}</p>}
     <div className="grid"><section>
       <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {displayName(state.seat_name)}{state.mode === "versus" ? ` · vs ${opponentLabel}` : state.mode === "bot" ? ` · vs ${displayName("Bot")}` : ""}</span>

@@ -1473,6 +1473,58 @@ def test_passphrase_assigns_two_seats_and_rejects_a_third():
         configure("bot", None)
 
 
+def test_reset_game_clears_friend_seats_and_names():
+    configure("versus", "test123")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, headers, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Arr"},
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+        first_cookie = next(value for key, value in headers if key == "Set-Cookie")
+        first_cookie = first_cookie.split(";", 1)[0]
+
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Crendia"},
+        )
+        assert status == 200
+        assert body == {"seat": 1}
+
+        status, headers, body = _web_request(
+            server, "POST", "/api/reset", cookie=first_cookie
+        )
+        assert status == 200
+        assert body == {"reset": True}
+        assert any(
+            key == "Set-Cookie" and "Max-Age=0" in value
+            for key, value in headers
+        )
+
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Fresh"},
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+        assert SESSION.state(0)["seat_name"] == "Fresh"
+        assert SESSION.state(0)["opponent_name"] is None
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)
+
+
 def test_stale_closed_seat_can_be_reclaimed():
     configure("versus", "test123")
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)

@@ -1241,7 +1241,7 @@ SESSION = WebSession()
 PASSPHRASE: str | None = None
 AUTH_SESSIONS: dict[str, int] = {}
 AUTH_LAST_SEEN: dict[str, float] = {}
-AUTH_SESSION_TIMEOUT = 30.0
+AUTH_SESSION_TIMEOUT = 12 * 60 * 60.0
 SECURE_COOKIE = False
 
 

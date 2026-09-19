@@ -48,6 +48,13 @@ Set `DRAGONISLES_NO_UPDATE=1` to skip the update check.
 Double-click `Play with a friend.command` to start a private Cloudflare quick tunnel.
 Send your friend the displayed link and passphrase.
 
+## Keeping the Rulebook current
+
+Any change to game rules or flow (turn order, the boat question, challenges,
+rewards, scoring, seats, game end) must update the in-app Rulebook in
+`frontend/components/rulebook.tsx` and `docs/rulebook.md` in the same change.
+`tests/test_rulebook.py` fails when either still mentions removed mechanics.
+
 ## Troubleshooting
 
 ```text

@@ -16,7 +16,7 @@ const commonSections = [
   ["Characters", "Monk draws one extra card after using a potion. Pirate's coins are worth double when scoring, and Pirate Sea skill helps on Sea encounters. Warrior draws one card after completing an encounter. Sorcerer draws three during Prepare. Trader draws three after gaining treasure and keeps one."],
   ["Green treasures", "Green treasures trigger on their displayed condition. Their passive effects include rerolling all 1s, adding a die, drawing a card, gaining a coin, and gaining a reward after a low-hand, method, or three-color success. The treasure text identifies its exact trigger and effect."],
   ["Scoring", "Final VP combines completed encounters, orange treasure VP, 3 VP per regular encounter-type trophy, 5 VP for the all-types trophy, and coin value after character modifiers. Trophy skill rewards add their configured bonus."],
-  ["End of game", "Compare final scores. If tied, the player with the larger coin-derived share wins."],
+  ["End of game", "The game ends as soon as a player completes their eighth Encounter; that final Encounter counts for its VP but grants no reward or trophy icon. Compare final scores. If tied, the player with the larger coin-derived share wins."],
 ] as const;
 
 type RulebookProps = { mode: "bot" | "versus" | "solo" };
@@ -24,9 +24,9 @@ type RulebookProps = { mode: "bot" | "versus" | "solo" };
 export function Rulebook({ mode }: RulebookProps) {
   const [open, setOpen] = useState(false);
   const modeSections = mode === "versus"
-    ? [["Starting player", "The later boat date goes first. If dates match, submit increasingly specific clock times until a later time determines the order."], ["Multiplayer privacy", "Each seat sees its own hand and potions. Shared encounters, Tavern cards, discard top card, challenge activity, dice, rewards, and public totals are shown according to the current game stage. Stale seats become reclaimable after inactivity."]]
+    ? [["Starting player", "Both players answer “Who traveled by boat most recently?” by choosing themselves or the other player. The game starts once both answers agree; if they differ, both choices are cleared and each player chooses again."], ["Seats and reconnecting", "Each seat belongs to the browser that joined it and survives page reloads, closed tabs, and idle time. If the board shows “Reconnecting…”, the game is retrying and will catch up automatically. Use “Reset game” to clear both seats and start a fresh game."], ["Multiplayer privacy", "Each seat sees its own hand and potions. Shared encounters, Tavern cards, discard top card, challenge activity, dice, rewards, and public totals are shown according to the current game stage."]]
     : mode === "bot"
-      ? [["Bot turn order", "Human always goes first. After your turn is resolved, the Bot continues automatically using the same encounter, card, dice, reward, skill, potion, and scoring rules as a human player."], ["Bot mode", "In bot mode, the second seat is controlled by the DragonIsles bot. The bot follows the same encounter, card, dice, reward, skill, potion, and scoring rules as a human player."]]
+      ? [["Bot turn order", "You always go first; there is no boat question in Bot mode. After your turn is resolved, the Bot takes its turn automatically."], ["Bot mode", "The second seat is controlled by the DragonIsles Bot, Tim. Tim follows the same encounter, card, dice, reward, skill, potion, and scoring rules as a human player and picks the most valuable Encounter it can reach with its current cards. Use “New game” to start over at any time."]]
       : [["Singleplayer mode", "This temporary developer mode has one Human player and no opponent. Complete Encounters, advance skills, collect rewards, and play until your eighth successful Encounter."]];
   const sections = [...commonSections.slice(0, 2), ...modeSections, ...commonSections.slice(2)];
 

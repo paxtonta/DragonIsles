@@ -25,8 +25,10 @@ from .combos import is_legal, is_legal_reason
 from .characters import ABILITIES, CHARACTERS, SKILL_TRACKS, TrackStep, available_tracks
 from .encounters import Encounter, load_encounters
 from .engine import ChallengeProgress, Game, GameInteraction, Player
-from .persistence import load as load_state
-from .persistence import save as save_state
+from .persistence import _payload
+from .persistence import blob_enabled, load as load_state
+from .persistence import load_blob, load_bytes, save as save_state
+from .persistence import save_blob
 from .potions import PLUS_TWO
 from .scoring import trophy_holders
 from .treasures import Treasure
@@ -46,6 +48,7 @@ class WebSession:
         self.lock = threading.RLock()
         self.mode = mode
         self.state_path = state_path
+        self.blob_etag = ""
         self.seat_names: dict[int, str] = {}
         self.boat_choices: dict[int, int] = {}
         self.boat_choice_messages: dict[int, str] = {}
@@ -113,6 +116,7 @@ class WebSession:
         self.pending_bot_prepare: dict[str, Any] | None = None
         self.pending_free_action_discard: Player | None = None
         self.revision = 0
+        self.processed_actions: dict[str, int] = {}
         self._run_bots()
 
     def new_game(self, mode: str | None = None) -> None:
@@ -130,6 +134,8 @@ class WebSession:
         game: Game,
         seat_names: dict[int, str] | None = None,
         boat: dict[str, Any] | None = None,
+        revision: int | None = None,
+        processed_actions: dict[str, int] | None = None,
     ) -> None:
         """Adopt a clean persisted game and reconnect browser callbacks."""
         if mode not in {"bot", "versus", "solo"}:
@@ -174,13 +180,44 @@ class WebSession:
             self.pending_prepare = None
             self.pending_bot_prepare = None
             self.pending_free_action_discard = None
-            self.revision += 1
+            self.revision = revision if revision is not None else self.revision + 1
+            self.processed_actions = dict(processed_actions or {})
             self._run_bots()
 
-    def _save(self) -> None:
-        if self.state_path is None:
+    def refresh_remote(self) -> None:
+        if not blob_enabled():
             return
-        if (
+        try:
+            remote = load_blob()
+        except (OSError, ValueError, json.JSONDecodeError):
+            return
+        if remote is None:
+            return
+        content, etag = remote
+        if etag == self.blob_etag:
+            return
+        loaded = load_bytes(content)
+        if loaded is None or loaded[0] != self.mode:
+            return
+        mode, game, auth, names, boat, metadata = loaded
+        self.restore(
+            mode,
+            game,
+            names,
+            boat,
+            revision=int(metadata.get("revision", 0)),
+            processed_actions=metadata.get("processed_actions", {}),
+        )
+        AUTH_SESSIONS.clear()
+        AUTH_SESSIONS.update(auth)
+        AUTH_LAST_SEEN.clear()
+        AUTH_LAST_SEEN.update({token: time.monotonic() for token in auth})
+        self.blob_etag = etag
+
+    def _save(self) -> None:
+        if self.state_path is None and not blob_enabled():
+            return
+        if self.state_path is not None and (
             self.pending_challenge is not None
             or self.pending_skill_tracks is not None
             or self.pending_prepare is not None
@@ -205,15 +242,34 @@ class WebSession:
                 "decided": self.first_turn_decided,
             }
         )
-        save_state(
-            self.state_path,
-            self.mode,
-            self.game,
-            AUTH_SESSIONS,
-            self.seat_names,
-            boat,
-            first_turn,
-        )
+        metadata = {
+            "revision": self.revision,
+            "processed_actions": dict(self.processed_actions),
+        }
+        if self.state_path is not None:
+            save_state(
+                self.state_path,
+                self.mode,
+                self.game,
+                AUTH_SESSIONS,
+                self.seat_names,
+                boat,
+                first_turn,
+                metadata,
+            )
+        if blob_enabled():
+            self.blob_etag = save_blob(
+                _payload(
+                    self.mode,
+                    self.game,
+                    AUTH_SESSIONS,
+                    self.seat_names,
+                    boat,
+                    first_turn,
+                    metadata,
+                ),
+                self.blob_etag or None,
+            )
 
     def _apply_seat_names(self) -> None:
         if self.mode != "versus":
@@ -344,10 +400,15 @@ class WebSession:
             self.game.state.turn_number += 1
         self._run_bots()
 
-    def action(self, payload: dict[str, Any], seat: int = 0) -> None:
+    def action(
+        self, payload: dict[str, Any], seat: int = 0, *, save: bool = True
+    ) -> None:
         with self.lock:
             self._action(payload, seat)
-            self._save()
+            if payload.get("action") != "new_game":
+                self.revision += 1
+            if save:
+                self._save()
 
     def _action(self, payload: dict[str, Any], seat: int = 0) -> None:
         with self.lock:
@@ -394,7 +455,6 @@ class WebSession:
                     self.boat_result = result
                     self.first_turn_decided = True
                     self.events.append(result)
-                self.revision += 1
                 return
             if action in {"boat_answer", "boat_time"}:
                 raise ValueError("choose one of the two boat options")
@@ -1186,6 +1246,8 @@ SECURE_COOKIE = False
 
 
 def _prune_auth_sessions(now: float | None = None) -> None:
+    if blob_enabled():
+        return
     current = time.monotonic() if now is None else now
     stale = [
         token
@@ -1250,14 +1312,33 @@ def configure(
 ) -> None:
     global PASSPHRASE, SECURE_COOKIE
     with SESSION.lock:
-        loaded = load_state(state_path) if state_path is not None else None
+        try:
+            remote = load_blob() if blob_enabled() else None
+        except (OSError, ValueError, json.JSONDecodeError):
+            remote = None
+        loaded = (
+            load_bytes(remote[0]) if remote is not None else None
+        )
+        local_loaded = load_state(state_path) if loaded is None and state_path is not None else None
         SESSION.state_path = None
+        SESSION.blob_etag = remote[1] if remote is not None else ""
         AUTH_SESSIONS.clear()
         AUTH_LAST_SEEN.clear()
         if loaded is not None and loaded[0] == mode:
             SESSION.state_path = state_path
-            SESSION.restore(mode, loaded[1], loaded[3], loaded[4])
+            SESSION.restore(
+                mode,
+                loaded[1],
+                loaded[3],
+                loaded[4],
+                revision=int(loaded[5].get("revision", 0)),
+                processed_actions=loaded[5].get("processed_actions", {}),
+            )
             AUTH_SESSIONS.update(loaded[2])
+        elif local_loaded is not None and local_loaded[0] == mode:
+            SESSION.state_path = state_path
+            SESSION.restore(local_loaded[0], local_loaded[1], local_loaded[3], local_loaded[4])
+            AUTH_SESSIONS.update(local_loaded[2])
             now = time.monotonic()
             AUTH_LAST_SEEN.update(
                 {token: now for token in AUTH_SESSIONS}
@@ -1355,7 +1436,6 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/action":
                 with SESSION.lock:
                     SESSION.action(payload, seat)
-                SESSION.revision += 1
                 body = SESSION.state(seat)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)

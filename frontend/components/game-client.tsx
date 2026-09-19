@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -88,6 +88,8 @@ export default function GameClient() {
   const [method, setMethod] = useState<string | null>(null);
   const [options, setOptions] = useState<Options | null>(null);
   const [error, setError] = useState("");
+  const [reconnecting, setReconnecting] = useState(false);
+  const intentKeys = useRef(new Map<string, string>());
   const expireSession = useCallback(() => {
     setState(null);
     setNeedsLogin(true);
@@ -116,8 +118,9 @@ export default function GameClient() {
   const load = useCallback(async () => {
     try {
       const next = await api("/api/state") as State;
-      setState(next); setNeedsLogin(false); setError("");
+      setState(next); setNeedsLogin(false); setReconnecting(false); setError("");
     } catch (caught) {
+      setReconnecting(true);
       if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
       else setError(caught instanceof Error ? caught.message : "Unable to load game.");
     }
@@ -126,20 +129,35 @@ export default function GameClient() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (!state || needsLogin) return;
-    const delay = state.mode === "versus" && !state.human_turn ? 2000 : 3000;
-    const timer = window.setInterval(() => { if (!state.challenge && !state.prepare && !state.discard && !state.trader && !state.treasure) void load(); }, delay);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => { void load(); }, 3000);
+    const onFocus = () => { void load(); };
+    const onOnline = () => { void load(); };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
+    };
   }, [load, needsLogin, state]);
 
   const post = useCallback(async (body: Record<string, unknown>) => {
+    const revision = state?.revision;
+    const intent = JSON.stringify({ body, revision });
+    const idempotencyKey = intentKeys.current.get(intent) ?? crypto.randomUUID();
+    intentKeys.current.set(intent, idempotencyKey);
     try {
-      const next = await api("/api/action", body) as State;
-      setState(next); setSelectedEncounter(null); setSelectedCards([]); setDiscardCards([]); setRerollDice([]); setMethod(null); setOptions(null); setError("");
+      const next = await api("/api/action", {
+        ...body,
+        revision,
+        idempotency_key: idempotencyKey,
+      }) as State;
+      setState(next); setSelectedEncounter(null); setSelectedCards([]); setDiscardCards([]); setRerollDice([]); setMethod(null); setOptions(null); setReconnecting(false); setError("");
     } catch (caught) {
       if (caught instanceof Error && caught.message.includes("authentication")) expireSession();
-      else { setError(caught instanceof Error ? caught.message : "Action failed."); await load(); }
+      else { setError(caught instanceof Error ? caught.message : "Action failed."); setReconnecting(true); await load(); }
     }
-  }, [expireSession, load]);
+  }, [expireSession, load, state?.revision]);
 
   const resetGame = async () => {
     if (!window.confirm("Reset this friend game for both players?")) return;
@@ -190,6 +208,7 @@ export default function GameClient() {
 
   return <main>
     <h1>DragonIsles <ThemeToggle theme={theme} onToggle={toggleTheme} />{state.mode === "versus" ? <Button variant="secondary" onClick={() => void resetGame()}>Reset game</Button> : <Button variant="secondary" onClick={() => void post({ action: "new_game" })}>New game</Button>}<Rulebook mode={state.mode} /></h1>
+    {reconnecting && <p role="status">Reconnecting…</p>}
     {error && <p role="alert">{error}</p>}
     <div className="grid"><section>
       <Card><CardContent><b>{titleStatus}</b><br /><span className="muted">Playing as {displayName(state.seat_name)}{state.mode === "versus" ? ` · vs ${opponentLabel}` : state.mode === "bot" ? ` · vs ${displayName("Bot")}` : ""}</span>

@@ -151,12 +151,13 @@ the character's Trophy skill are added when trophies are scored.
 ## Multiplayer and privacy
 
 The versus game has two seats. A seat name is shown in the header as
-`Playing as [name] · vs [opponent]`. Each seat belongs to the browser that
-joined it and survives reloads, closed tabs, and idle time; inactivity never
-releases a seat. If the board shows "Reconnecting…", the client is retrying
-and catches up automatically. "Reset game" clears both seats and starts a
-fresh game. The UI identifies the opponent by name or says that no other
-player has joined yet.
+`Playing as [name] · vs [opponent]`. Each seat belongs to the browser tab that
+joined it and survives page reloads and idle time. A new tab shows the join
+screen: enter your own name to return to your seat, or the other player’s name
+to take the free seat. If the board shows "Reconnecting…", the client is
+retrying and catches up automatically. "Reset game" clears both seats and
+starts a fresh game. The UI identifies the opponent by name or says that no
+other player has joined yet.
 
 Private hands and potion inventories are filtered by seat. Challenge cards,
 dice, totals, rewards, and shared-board information become visible only at the

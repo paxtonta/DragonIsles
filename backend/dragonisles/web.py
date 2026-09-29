@@ -1350,10 +1350,14 @@ class Handler(BaseHTTPRequestHandler):
         morsel = cookies.get("dragonisles_session")
         return morsel.value if morsel is not None else None
 
+    def _request_token(self) -> str | None:
+        header = self.headers.get("X-DragonIsles-Session")
+        return header if header else self._cookie_token()
+
     def _seat(self) -> int | None:
         if PASSPHRASE is None:
             return 0
-        token = self._cookie_token()
+        token = self._request_token()
         if token is None:
             return None
         with SESSION.lock:
@@ -1437,28 +1441,59 @@ class Handler(BaseHTTPRequestHandler):
         ):
             self.send_json({"error": "invalid passphrase"}, HTTPStatus.FORBIDDEN)
             return
-        token = self._cookie_token()
+        token = self._request_token()
         name = _clean_name(payload.get("name"))
         with SESSION.lock:
-            seat = AUTH_SESSIONS.get(token) if token is not None else None
-            if seat is None:
-                if SESSION.mode == "versus":
-                    assigned = set(AUTH_SESSIONS.values())
-                    available = next(
-                        (candidate for candidate in (0, 1) if candidate not in assigned),
-                        None,
-                    )
-                    if available is None:
-                        self.send_json(
-                            {"error": "both seats are taken"},
-                            HTTPStatus.FORBIDDEN,
-                        )
-                        return
-                    seat = available
+            current = AUTH_SESSIONS.get(token) if token is not None else None
+            if SESSION.mode == "versus":
+                assigned = set(AUTH_SESSIONS.values())
+                free = next(
+                    (candidate for candidate in (0, 1) if candidate not in assigned),
+                    None,
+                )
+                matching_token = next(
+                    (
+                        candidate_token
+                        for candidate_token, candidate_seat in AUTH_SESSIONS.items()
+                        if current is not None
+                        and name is not None
+                        and SESSION.player_for_seat(candidate_seat).name.casefold()
+                        == name.casefold()
+                    ),
+                    None,
+                )
+                if matching_token is not None:
+                    token = matching_token
+                    seat = AUTH_SESSIONS[token]
                 else:
-                    seat = 0
-                token = secrets.token_urlsafe(32)
-                AUTH_SESSIONS[token] = seat
+                    seat = None
+                current_name = (
+                    SESSION.player_for_seat(current).name if current is not None else None
+                )
+                same_name = (
+                    name is not None
+                    and current_name is not None
+                    and name.casefold() == current_name.casefold()
+                )
+                if seat is None and current is not None and (
+                    name is None or same_name or free is None
+                ):
+                    seat = current
+                elif seat is None and free is not None:
+                    seat = free
+                    token = secrets.token_urlsafe(32)
+                    AUTH_SESSIONS[token] = seat
+                elif seat is None:
+                    self.send_json(
+                        {"error": "both seats are taken"},
+                        HTTPStatus.FORBIDDEN,
+                    )
+                    return
+            else:
+                seat = current if current is not None else 0
+                if current is None:
+                    token = secrets.token_urlsafe(32)
+                    AUTH_SESSIONS[token] = seat
             _touch_auth_session(token)
             if SESSION.mode == "versus" and name is not None:
                 SESSION.set_seat_name(seat, name)
@@ -1471,6 +1506,7 @@ class Handler(BaseHTTPRequestHandler):
                 f"{token}; HttpOnly; SameSite=Lax; Path=/"
                 + ("; Secure" if SECURE_COOKIE else "")
             ),
+            extra_headers={"X-DragonIsles-Session": token},
         )
 
     def send_json(
@@ -1479,6 +1515,7 @@ class Handler(BaseHTTPRequestHandler):
         status: HTTPStatus = HTTPStatus.OK,
         *,
         cookie: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         data = json.dumps(body).encode()
         self.send_response(status)
@@ -1486,6 +1523,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         if cookie is not None:
             self.send_header("Set-Cookie", cookie)
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(data)
 

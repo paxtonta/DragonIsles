@@ -42,15 +42,15 @@ def test_solo_cli_requires_developer_gate(monkeypatch):
         main(["--mode", "solo"])
 
 
-def _web_request(server, method, path, body=None, cookie=None):
+def _web_request(server, method, path, body=None, cookie=None, headers=None):
     connection = http.client.HTTPConnection(*server.server_address)
-    headers = {}
+    request_headers = dict(headers or {})
     if body is not None:
-        headers["Content-Type"] = "application/json"
+        request_headers["Content-Type"] = "application/json"
         body = json.dumps(body)
     if cookie is not None:
-        headers["Cookie"] = cookie
-    connection.request(method, path, body=body, headers=headers)
+        request_headers["Cookie"] = cookie
+    connection.request(method, path, body=body, headers=request_headers)
     response = connection.getresponse()
     data = response.read()
     connection.close()
@@ -1472,6 +1472,97 @@ def test_passphrase_assigns_two_seats_and_rejects_a_third():
         configure("bot", None)
 
 
+def test_new_tab_join_by_name_picks_seat():
+    configure("versus", "test123")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, headers, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Alice"},
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+        first_cookie = next(value for key, value in headers if key == "Set-Cookie")
+        first_cookie_token = first_cookie.split("=", 1)[1].split(";", 1)[0]
+        first_header_token = next(
+            value for key, value in headers if key == "X-DragonIsles-Session"
+        )
+        assert first_header_token == first_cookie_token
+
+        status, headers, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Bob"},
+            cookie=first_cookie.split(";", 1)[0],
+        )
+        assert status == 200
+        assert body == {"seat": 1}
+        second_cookie = next(value for key, value in headers if key == "Set-Cookie")
+        second_cookie = second_cookie.split(";", 1)[0]
+        second_header_token = next(
+            value for key, value in headers if key == "X-DragonIsles-Session"
+        )
+        assert second_header_token != first_header_token
+
+        status, headers, body = _web_request(
+            server, "POST", "/api/join", {"passphrase": "test123", "name": "alice"},
+            cookie=second_cookie,
+        )
+        assert status == 200
+        assert body == {"seat": 0}
+        third_header_token = next(
+            value for key, value in headers if key == "X-DragonIsles-Session"
+        )
+        assert third_header_token == first_header_token
+
+        status, _, body = _web_request(
+            server,
+            "GET",
+            "/api/state",
+            cookie=second_cookie,
+            headers={"X-DragonIsles-Session": first_header_token},
+        )
+        assert status == 200
+        assert body["seat"] == 0
+
+        status, _, body = _web_request(
+            server,
+            "GET",
+            "/api/state",
+            cookie=second_cookie,
+        )
+        assert status == 200
+        assert body["seat"] == 1
+
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Carol"},
+            cookie=second_cookie,
+        )
+        assert status == 200
+        assert body == {"seat": 1}
+
+        status, _, body = _web_request(
+            server,
+            "POST",
+            "/api/join",
+            {"passphrase": "test123", "name": "Carol"},
+        )
+        assert status == 403
+        assert body == {"error": "both seats are taken"}
+    finally:
+        server.shutdown()
+        server.server_close()
+        configure("bot", None)
+
+
 def test_reset_game_clears_friend_seats_and_names():
     configure("versus", "test123")
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -1604,7 +1695,7 @@ def test_versus_names_are_sanitized_and_limited_to_their_seat():
             cookie=first_cookie,
         )
         assert status == 200
-        assert body == {"seat": 0}
+        assert body == {"seat": 1}
 
         status, headers, body = _web_request(
             server,
@@ -1612,17 +1703,8 @@ def test_versus_names_are_sanitized_and_limited_to_their_seat():
             "/api/join",
             {"passphrase": "test123", "name": "Bob"},
         )
-        assert status == 200
-        assert body == {"seat": 1}
-        second_cookie = next(value for key, value in headers if key == "Set-Cookie")
-        second_cookie = second_cookie.split(";", 1)[0]
-
-        status, _, body = _web_request(
-            server, "GET", "/api/state", cookie=second_cookie
-        )
-        assert status == 200
-        assert body["seat_name"] == "Bob"
-        assert body["opponent_name"] == "<b>x"
+        assert status == 403
+        assert body == {"error": "both seats are taken"}
 
         status, _, body = _web_request(
             server,
@@ -1638,7 +1720,7 @@ def test_versus_names_are_sanitized_and_limited_to_their_seat():
         )
         assert status == 200
         assert body["seat_name"] == "Alice Again"
-        assert body["opponent_name"] == "Bob"
+        assert body["opponent_name"] == "<b>x"
     finally:
         server.shutdown()
         server.server_close()

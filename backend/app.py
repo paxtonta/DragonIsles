@@ -24,11 +24,16 @@ def _cookie_token(request: Request) -> str | None:
     return morsel.value if morsel is not None else None
 
 
+def _request_token(request: Request) -> str | None:
+    header = request.headers.get("X-DragonIsles-Session")
+    return header if header else _cookie_token(request)
+
+
 def _seat(request: Request) -> int | None:
     if web.PASSPHRASE is None:
         return 0
     web.SESSION.refresh_remote()
-    token = _cookie_token(request)
+    token = _request_token(request)
     if token is None:
         return None
     with web.SESSION.lock:
@@ -53,30 +58,68 @@ def _join(payload: dict[str, Any], request: Request) -> JSONResponse:
         return JSONResponse(
             {"error": "invalid passphrase"}, status_code=HTTPStatus.FORBIDDEN
         )
-    token = _cookie_token(request)
+    token = _request_token(request)
     name = web._clean_name(payload.get("name"))
     web.SESSION.refresh_remote()
     with web.SESSION.lock:
-        seat = web.AUTH_SESSIONS.get(token) if token is not None else None
-        if seat is None:
+        current = web.AUTH_SESSIONS.get(token) if token is not None else None
+        if web.SESSION.mode == "versus":
             assigned = set(web.AUTH_SESSIONS.values())
-            seat = next(
+            free = next(
                 (candidate for candidate in (0, 1) if candidate not in assigned),
                 None,
             )
-            if seat is None:
+            matching_token = next(
+                (
+                    candidate_token
+                    for candidate_token, candidate_seat in web.AUTH_SESSIONS.items()
+                    if current is not None
+                    and name is not None
+                    and web.SESSION.player_for_seat(candidate_seat).name.casefold()
+                    == name.casefold()
+                ),
+                None,
+            )
+            if matching_token is not None:
+                token = matching_token
+                seat = web.AUTH_SESSIONS[token]
+            else:
+                seat = None
+            current_name = (
+                web.SESSION.player_for_seat(current).name
+                if current is not None
+                else None
+            )
+            same_name = (
+                name is not None
+                and current_name is not None
+                and name.casefold() == current_name.casefold()
+            )
+            if seat is None and current is not None and (
+                name is None or same_name or free is None
+            ):
+                seat = current
+            elif seat is None and free is not None:
+                seat = free
+                token = secrets.token_urlsafe(32)
+                web.AUTH_SESSIONS[token] = seat
+            elif seat is None:
                 return JSONResponse(
                     {"error": "both seats are taken"},
                     status_code=HTTPStatus.FORBIDDEN,
                 )
-            token = secrets.token_urlsafe(32)
-            web.AUTH_SESSIONS[token] = seat
+        else:
+            seat = current if current is not None else 0
+            if current is None:
+                token = secrets.token_urlsafe(32)
+                web.AUTH_SESSIONS[token] = seat
         if name is not None:
             web.SESSION.set_seat_name(seat, name)
         else:
             web.SESSION._save()
     response = JSONResponse({"seat": seat})
     response.headers["Set-Cookie"] = _cookie_header(token)
+    response.headers["X-DragonIsles-Session"] = token
     return response
 
 

@@ -26,8 +26,33 @@ type State = {
 };
 type Options = Record<"sneak" | "steal" | "strike", { enabled: boolean; reason: string }>;
 
+const SEAT_KEY = "dragonisles-seat";
+
+function storedSeatToken(): string | null {
+  try {
+    return window.sessionStorage.getItem(SEAT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeSeatToken(token: string | null): void {
+  try {
+    if (token) window.sessionStorage.setItem(SEAT_KEY, token);
+    else window.sessionStorage.removeItem(SEAT_KEY);
+  } catch {
+    // Seat switching still works when storage is unavailable.
+  }
+}
+
 const api = async (path: string, body?: Record<string, unknown>) => {
-  const response = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
+  const headers: Record<string, string> = {};
+  const token = storedSeatToken();
+  if (token) headers["X-DragonIsles-Session"] = token;
+  if (body) headers["Content-Type"] = "application/json";
+  const response = await fetch(path, body ? { method: "POST", headers, body: JSON.stringify(body) } : { headers });
+  const issued = response.headers.get("X-DragonIsles-Session");
+  if (issued) storeSeatToken(issued);
   const data: unknown = await response.json();
   if (!response.ok) throw new Error(typeof data === "object" && data && "error" in data ? String(data.error) : "Request failed");
   return data;
@@ -91,6 +116,7 @@ export default function GameClient() {
   const [reconnecting, setReconnecting] = useState(false);
   const intentKeys = useRef(new Map<string, string>());
   const expireSession = useCallback(() => {
+    storeSeatToken(null);
     setState(null);
     setNeedsLogin(true);
     setSelectedEncounter(null);
@@ -126,7 +152,13 @@ export default function GameClient() {
     }
   }, [expireSession]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (storedSeatToken() === null) {
+      setNeedsLogin(true);
+      return;
+    }
+    void load();
+  }, [load]);
   useEffect(() => {
     if (!state || needsLogin) return;
     const timer = window.setInterval(() => { void load(); }, 3000);
@@ -163,6 +195,7 @@ export default function GameClient() {
     if (!window.confirm("Reset this friend game for both players?")) return;
     try {
       await api("/api/reset", {});
+      storeSeatToken(null);
       setState(null);
       setNeedsLogin(true);
       setError("");

@@ -328,10 +328,16 @@ class WebSession:
     def _show_roll(
         self, player: Player, rolls: tuple[int, ...], bonus: int, total: int
     ) -> None:
-        self.events.append(f"Roll: {rolls}; skill bonus +{bonus}; total {total}.")
+        self.events.append(
+            f"{player.name} rolled {rolls}; skill bonus +{bonus}; total {total}."
+        )
 
     def _show_result(self, player: Player, success: bool) -> None:
-        self.events.append("Success!" if success else "Failure; you gained a potion.")
+        self.events.append(
+            f"{player.name} succeeded!"
+            if success
+            else f"{player.name} failed and gained a potion."
+        )
 
     def _continue_bot_prepare(self) -> None:
         pending = self.pending_bot_prepare

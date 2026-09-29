@@ -1241,23 +1241,7 @@ SESSION = WebSession()
 PASSPHRASE: str | None = None
 AUTH_SESSIONS: dict[str, int] = {}
 AUTH_LAST_SEEN: dict[str, float] = {}
-AUTH_SESSION_TIMEOUT = 30.0
 SECURE_COOKIE = False
-
-
-def _prune_auth_sessions(now: float | None = None) -> None:
-    if blob_enabled():
-        return
-    current = time.monotonic() if now is None else now
-    stale = [
-        token
-        for token, seat in AUTH_SESSIONS.items()
-        if current - AUTH_LAST_SEEN.get(token, current) > AUTH_SESSION_TIMEOUT
-        or seat not in (0, 1)
-    ]
-    for token in stale:
-        AUTH_SESSIONS.pop(token, None)
-        AUTH_LAST_SEEN.pop(token, None)
 
 
 def _touch_auth_session(token: str) -> None:
@@ -1373,7 +1357,6 @@ class Handler(BaseHTTPRequestHandler):
         if token is None:
             return None
         with SESSION.lock:
-            _prune_auth_sessions()
             seat = AUTH_SESSIONS.get(token)
             if seat is not None:
                 _touch_auth_session(token)
@@ -1457,7 +1440,6 @@ class Handler(BaseHTTPRequestHandler):
         token = self._cookie_token()
         name = _clean_name(payload.get("name"))
         with SESSION.lock:
-            _prune_auth_sessions()
             seat = AUTH_SESSIONS.get(token) if token is not None else None
             if seat is None:
                 if SESSION.mode == "versus":

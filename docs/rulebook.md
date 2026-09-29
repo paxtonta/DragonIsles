@@ -18,9 +18,10 @@ activity, and public player totals.
 
 ## Starting player
 
-Each player answers the boat question. A more recent date goes first. If the
-dates match, the game asks for a clock time; the later specific time goes
-first. Continue with more specific answers until the order is determined.
+In friend mode, both players answer "Who traveled by boat most recently?" by
+choosing themselves or the other player. The game starts once both answers
+agree; if they differ, both choices are cleared and each player chooses again.
+In Bot mode the Human always goes first and no boat question is asked.
 
 ## Turn sequence
 
@@ -150,9 +151,12 @@ the character's Trophy skill are added when trophies are scored.
 ## Multiplayer and privacy
 
 The versus game has two seats. A seat name is shown in the header as
-`Playing as [name] · vs [opponent]`. A player who closes their browser can
-reclaim their seat after the inactive session expires. While waiting, the UI
-identifies the opponent by name or says that no other player has joined yet.
+`Playing as [name] · vs [opponent]`. Each seat belongs to the browser that
+joined it and survives reloads, closed tabs, and idle time; inactivity never
+releases a seat. If the board shows "Reconnecting…", the client is retrying
+and catches up automatically. "Reset game" clears both seats and starts a
+fresh game. The UI identifies the opponent by name or says that no other
+player has joined yet.
 
 Private hands and potion inventories are filtered by seat. Challenge cards,
 dice, totals, rewards, and shared-board information become visible only at the
@@ -160,5 +164,7 @@ appropriate public stage.
 
 ## End of game
 
-When the game ends, compare final scores and apply the coin-share tie-break.
+The game ends as soon as a player completes their eighth Encounter; that final
+Encounter counts for its VP but grants no reward or trophy icon. Then compare
+final scores and apply the coin-share tie-break.
 The final-score panel shows each player's VP total.

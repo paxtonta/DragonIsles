@@ -264,12 +264,13 @@ def test_web_game_over_uses_highest_vp_player_as_winner():
     human.encounters[:] = [Encounter(f"Done {index}", 1, 1, 1, 1) for index in range(8)]
     bot.encounters[:] = [Encounter(f"High {index}", 5, 1, 1, 1) for index in range(8)]
     session.game.state.game_over = True
+    session.game.state.winner = bot
 
     state = session.state()
 
     scores = {player["name"]: player["score"] for player in state["players"]}
     assert scores[bot.name] > scores[human.name]
-    assert "winner" not in state
+    assert state["winner"] == bot.name
     assert "coin_points" in state["players"][0]
     assert "coinPercentage" in HTML
     assert "coinPercentage(p)===highCoin" in HTML

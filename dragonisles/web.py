@@ -410,9 +410,18 @@ class WebSession:
         self, payload: dict[str, Any], seat: int = 0, *, save: bool = True
     ) -> None:
         with self.lock:
+            idempotency_key = payload.get("idempotency_key")
+            key = str(idempotency_key) if idempotency_key is not None else None
+            if key is not None and key in self.processed_actions:
+                return
             self._action(payload, seat)
             if payload.get("action") != "new_game":
                 self.revision += 1
+            if key is not None:
+                self.processed_actions[key] = self.revision
+                if len(self.processed_actions) > 512:
+                    for stale_key in list(self.processed_actions)[:-512]:
+                        del self.processed_actions[stale_key]
             if save:
                 self._save()
 
@@ -836,6 +845,11 @@ class WebSession:
                 is player,
                 "die_faces": list(self.game.rules.die_faces),
                 "game_over": self.game.state.game_over,
+                "winner": (
+                    None
+                    if getattr(self.game.state, "winner", None) is None
+                    else self.game.state.winner.name
+                ),
                 "events": self.events[-12:],
                 "prepare": (
                     None

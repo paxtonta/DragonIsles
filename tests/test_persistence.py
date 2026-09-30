@@ -76,7 +76,8 @@ def test_save_load_round_trip_preserves_game_state(tmp_path):
     loaded = load(path)
 
     assert loaded is not None
-    mode, game, auth, names, boat = loaded
+    mode, game, auth, names, boat, metadata = loaded
+    assert metadata == {}
     assert mode == "versus"
     assert auth == {"first": 0, "second": 1}
     assert names == {0: "Alice", 1: "Bob"}
@@ -107,7 +108,8 @@ def test_solo_save_load_preserves_single_player_state(tmp_path):
     loaded = load(path)
 
     assert loaded is not None
-    mode, game, auth, names, boat = loaded
+    mode, game, auth, names, boat, metadata = loaded
+    assert metadata == {}
     assert mode == "solo"
     assert auth == {}
     assert names == {}
@@ -165,7 +167,7 @@ def test_restart_keeps_authenticated_seats(tmp_path):
         configure("bot", None)
 
 
-def test_pending_prompt_does_not_overwrite_last_clean_save(tmp_path):
+def test_pending_prompt_is_saved_with_the_game(tmp_path):
     path = tmp_path / "game.pkl"
     session = WebSession("versus", state_path=path)
     session.action({"action": "boat_choice", "choice": 0}, seat=0)
@@ -181,7 +183,23 @@ def test_pending_prompt_does_not_overwrite_last_clean_save(tmp_path):
     after = load(path)
     assert after is not None
     assert _snapshot(after[1]) == before_snapshot
-    assert after[1].state.turn_number == before[1].state.turn_number
+    pending = after[5].get("pending", {})
+    prepare = pending.get("prepare")
+    assert prepare is not None
+    assert prepare["player"] is after[1].state.players[0]
+    assert prepare["remaining"] > 0
+
+    restored = WebSession("versus")
+    restored.restore(
+        after[0],
+        after[1],
+        after[3],
+        after[4],
+        pending=after[5].get("pending"),
+        events=after[5].get("events"),
+    )
+    assert restored.pending_prepare is not None
+    assert restored.state(0)["prepare"]["remaining"] == prepare["remaining"]
 
 
 def test_pending_boat_question_round_trips(tmp_path):

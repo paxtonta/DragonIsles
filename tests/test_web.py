@@ -1839,3 +1839,70 @@ def test_no_passphrase_new_game_cannot_lock_out_bot_mode():
         server.shutdown()
         server.server_close()
         configure("bot", None)
+
+
+def test_pending_skill_choice_survives_state_save_and_restore(tmp_path):
+    from dragonisles.characters import available_tracks
+    from dragonisles.combos import is_legal
+    from dragonisles.persistence import load as load_state
+
+    session = WebSession("versus")
+    session.seat_names = {0: "Tim", 1: "Ari"}
+    session._apply_seat_names()
+    session.first_turn_decided = True
+    player = session.game.state.players[0]
+    session.game.state.current_player = 0
+    player.hand[:] = [Card("red", 10), Card("blue", 10), Card("red", 3)]
+    combo = (player.hand[0], player.hand[1])
+    options = [
+        (card, method)
+        for card in session.game.state.encounters
+        for method in ("sneak", "steal", "strike")
+        if card.blocked_method != method and is_legal(combo, method)
+    ]
+    assert options
+    encounter, method = options[0]
+    session.pending_challenge = session.game.begin_attempt(
+        player, encounter, Decision("attempt", encounter, combo, method)
+    )
+    session.pending_challenge.rolled_total = (
+        session.pending_challenge.target + 1
+    )
+    session.game.resolve_attempt(
+        session.pending_challenge, advance_experience=False
+    )
+    session.pending_skill_tracks = tuple(
+        available_tracks(player.character, player.skill_levels)
+    )
+    session.events.append("Tim succeeded!")
+    state_path = tmp_path / "state.pkl"
+    session.state_path = state_path
+    session._save()
+
+    loaded = load_state(state_path)
+    assert loaded is not None
+    restored = WebSession(loaded[0])
+    restored.restore(
+        loaded[0],
+        loaded[1],
+        loaded[3],
+        loaded[4],
+        revision=int(loaded[5].get("revision", 0)),
+        processed_actions=loaded[5].get("processed_actions", {}),
+        pending=loaded[5].get("pending"),
+        events=loaded[5].get("events"),
+    )
+
+    state = restored.state(0)
+    assert state["challenge"]["phase"] == "skill"
+    assert state["challenge"]["mine"] is True
+    assert "Tim succeeded!" in state["events"]
+    assert encounter.name not in [
+        card["name"] for card in state["encounters"]
+    ]
+    assert len(restored.game.state.players[0].encounters) == 1
+
+    track = restored.pending_skill_tracks[0]
+    restored.action({"action": "skill", "track": track}, 0)
+    assert restored.game.state.players[0].skill_levels[track] == 1
+    assert restored.state(0)["challenge"] is None

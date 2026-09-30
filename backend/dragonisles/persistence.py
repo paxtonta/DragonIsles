@@ -163,7 +163,14 @@ def save(
 
 def load(
     path: Path,
-) -> tuple[str, Game, dict[str, int], dict[int, str], dict[str, Any]] | None:
+) -> tuple[
+    str,
+    Game,
+    dict[str, int],
+    dict[int, str],
+    dict[str, Any],
+    dict[str, Any],
+] | None:
     """Load a persisted game, returning None for any invalid state."""
     try:
         with path.open("rb") as stream:
@@ -286,6 +293,7 @@ def load(
             dict(auth),
             dict(names),
             normalized_boat,
+            dict(payload.get("metadata", {})),
         )
     except Exception:
         print("DragonIsles state load failed; starting a new game.", file=sys.stderr)

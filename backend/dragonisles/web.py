@@ -136,14 +136,20 @@ class WebSession:
         boat: dict[str, Any] | None = None,
         revision: int | None = None,
         processed_actions: dict[str, int] | None = None,
+        pending: dict[str, Any] | None = None,
+        events: list[Any] | None = None,
     ) -> None:
-        """Adopt a clean persisted game and reconnect browser callbacks."""
+        """Adopt a persisted game and reconnect browser callbacks."""
         if mode not in {"bot", "versus", "solo"}:
             raise ValueError("mode must be bot, versus, or solo")
         with self.lock:
             self.mode = mode
             self.seat_names = dict(seat_names or {})
-            self.events = []
+            self.events = (
+                [str(item) for item in events if isinstance(item, str)][-200:]
+                if isinstance(events, list)
+                else []
+            )
             self.game = game
             self.game.interaction = self._interaction()
             boat = boat or {
@@ -174,12 +180,49 @@ class WebSession:
                 self.first_turn_decided = True
                 self.game.state.current_player = 0
             self._apply_seat_names()
-            self.pending = {}
-            self.pending_challenge = None
-            self.pending_skill_tracks = None
-            self.pending_prepare = None
-            self.pending_bot_prepare = None
-            self.pending_free_action_discard = None
+            players = self.game.state.players
+
+            def _owns(candidate: Any) -> bool:
+                return any(candidate is player for player in players)
+
+            pending = pending if isinstance(pending, dict) else {}
+            challenge = pending.get("challenge")
+            if challenge is not None and not _owns(
+                getattr(challenge, "player", None)
+            ):
+                challenge = None
+            self.pending_challenge = challenge
+            tracks = pending.get("skill_tracks")
+            self.pending_skill_tracks = (
+                tuple(str(track) for track in tracks)
+                if challenge is not None
+                and isinstance(tracks, (tuple, list))
+                and all(isinstance(track, str) for track in tracks)
+                else None
+            )
+            prepare = pending.get("prepare")
+            self.pending_prepare = (
+                prepare
+                if isinstance(prepare, dict)
+                and _owns(prepare.get("player"))
+                and isinstance(prepare.get("remaining"), int)
+                and isinstance(prepare.get("drawn"), list)
+                else None
+            )
+            bot_prepare = pending.get("bot_prepare")
+            self.pending_bot_prepare = (
+                bot_prepare
+                if isinstance(bot_prepare, dict)
+                and _owns(bot_prepare.get("player"))
+                and isinstance(bot_prepare.get("remaining"), int)
+                else None
+            )
+            free_discard = pending.get("free_action_discard")
+            self.pending_free_action_discard = (
+                free_discard if _owns(free_discard) else None
+            )
+            scratch = pending.get("scratch")
+            self.pending = dict(scratch) if isinstance(scratch, dict) else {}
             self.revision = revision if revision is not None else self.revision + 1
             self.processed_actions = dict(processed_actions or {})
             self._run_bots()
@@ -207,6 +250,8 @@ class WebSession:
             boat,
             revision=int(metadata.get("revision", 0)),
             processed_actions=metadata.get("processed_actions", {}),
+            pending=metadata.get("pending"),
+            events=metadata.get("events"),
         )
         AUTH_SESSIONS.clear()
         AUTH_SESSIONS.update(auth)
@@ -214,19 +259,18 @@ class WebSession:
         AUTH_LAST_SEEN.update({token: time.monotonic() for token in auth})
         self.blob_etag = etag
 
+    def _pending_snapshot(self) -> dict[str, Any]:
+        return {
+            "scratch": dict(self.pending),
+            "challenge": self.pending_challenge,
+            "skill_tracks": self.pending_skill_tracks,
+            "prepare": self.pending_prepare,
+            "bot_prepare": self.pending_bot_prepare,
+            "free_action_discard": self.pending_free_action_discard,
+        }
+
     def _save(self) -> None:
         if self.state_path is None and not blob_enabled():
-            return
-        if self.state_path is not None and (
-            self.pending_challenge is not None
-            or self.pending_skill_tracks is not None
-            or self.pending_prepare is not None
-            or self.pending_bot_prepare is not None
-            or self.pending_free_action_discard is not None
-            or self.game.pending_discard is not None
-            or self.game.pending_treasure_draw is not None
-            or self.game.pending_trader_draw is not None
-        ):
             return
         boat = {
             "choices": self.boat_choices,
@@ -245,6 +289,8 @@ class WebSession:
         metadata = {
             "revision": self.revision,
             "processed_actions": dict(self.processed_actions),
+            "pending": self._pending_snapshot(),
+            "events": list(self.events[-200:]),
         }
         if self.state_path is not None:
             save_state(
@@ -354,6 +400,14 @@ class WebSession:
 
     def _run_bots(self) -> None:
         if not self.first_turn_decided:
+            return
+        if (
+            self.pending_challenge is not None
+            or self.pending_bot_prepare is not None
+            or self.game.pending_discard is not None
+            or self.game.pending_treasure_draw is not None
+            or self.game.pending_trader_draw is not None
+        ):
             return
         while (
             not self.game.state.game_over
@@ -1341,7 +1395,17 @@ def configure(
             AUTH_SESSIONS.update(loaded[2])
         elif local_loaded is not None and local_loaded[0] == mode:
             SESSION.state_path = state_path
-            SESSION.restore(local_loaded[0], local_loaded[1], local_loaded[3], local_loaded[4])
+            local_metadata = local_loaded[5] if len(local_loaded) > 5 else {}
+            SESSION.restore(
+                local_loaded[0],
+                local_loaded[1],
+                local_loaded[3],
+                local_loaded[4],
+                revision=int(local_metadata.get("revision", 0)),
+                processed_actions=local_metadata.get("processed_actions", {}),
+                pending=local_metadata.get("pending"),
+                events=local_metadata.get("events"),
+            )
             AUTH_SESSIONS.update(local_loaded[2])
             now = time.monotonic()
             AUTH_LAST_SEEN.update(
